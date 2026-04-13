@@ -489,6 +489,70 @@ describe('parseCurlCommand', () => {
     });
   });
 
+  describe('ANSI C Escape Decoding', () => {
+    it('should decode \\uXXXX unicode escape in single-quoted body', () => {
+      const result = parseCurlCommand(
+        `curl -d '{"query": "\\u0021validateAuth"}' https://api.example.com`
+      );
+
+      expect(result).toEqual({
+        method: 'post',
+        data: '{"query": "!validateAuth"}',
+        url: 'https://api.example.com',
+        urlWithoutQuery: 'https://api.example.com'
+      });
+    });
+
+    it('should decode \\uXXXX unicode escape in double-quoted body', () => {
+      const result = parseCurlCommand(
+        `curl -d "{\\"query\\": \\"\\u0041BC\\"}" https://api.example.com`
+      );
+
+      expect(result).toEqual({
+        method: 'post',
+        data: '{"query": "ABC"}',
+        url: 'https://api.example.com',
+        urlWithoutQuery: 'https://api.example.com'
+      });
+    });
+
+    it('should decode \\uXXXX unicode escape in header value', () => {
+      const result = parseCurlCommand(
+        `curl -H 'X-Custom: \\u0048ello' https://api.example.com`
+      );
+
+      expect(result).toMatchObject({
+        headers: { 'X-Custom': 'Hello' }
+      });
+    });
+
+    it('should decode \\xHH hex escape in body', () => {
+      const result = parseCurlCommand(
+        `curl -d '{"token": "\\x61bc"}' https://api.example.com`
+      );
+
+      expect(result).toEqual({
+        method: 'post',
+        data: '{"token": "abc"}',
+        url: 'https://api.example.com',
+        urlWithoutQuery: 'https://api.example.com'
+      });
+    });
+
+    it('should decode \\r\\n\\t escape sequences in body value', () => {
+      const result = parseCurlCommand(
+        `curl -d '{"input": "{\\r\\n\\t file: req.header\\r\\n}"}' https://api.example.com`
+      );
+
+      expect(result).toEqual({
+        method: 'post',
+        data: '{"input": "{\r\n\t file: req.header\r\n}"}',
+        url: 'https://api.example.com',
+        urlWithoutQuery: 'https://api.example.com'
+      });
+    });
+  });
+
   describe('Shell Quote Handling', () => {
     it(`should handle shell quote patterns ('\'' => \')`, () => {
       const result = parseCurlCommand(`

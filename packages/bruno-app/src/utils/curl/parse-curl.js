@@ -175,15 +175,16 @@ const handleFlagCategory = (category, arg, request) => {
  * Maps state names to their value processing functions
  */
 const handleValue = (value, state, request) => {
+  const decodedValue = decodeAnsiEscapes(value);
   const valueHandlers = {
-    'header': () => setHeader(request, value),
-    'user-agent': () => setUserAgent(request, value),
-    'data': () => setData(request, value),
-    'json': () => setJsonData(request, value),
-    'form': () => setFormData(request, value),
-    'user': () => setAuth(request, value),
-    'method': () => setMethod(request, value),
-    'cookie': () => setCookie(request, value)
+    'header': () => setHeader(request, decodedValue),
+    'user-agent': () => setUserAgent(request, decodedValue),
+    'data': () => setData(request, decodedValue),
+    'json': () => setJsonData(request, decodedValue),
+    'form': () => setFormData(request, decodedValue),
+    'user': () => setAuth(request, decodedValue),
+    'method': () => setMethod(request, decodedValue),
+    'cookie': () => setCookie(request, decodedValue)
   };
 
   const handler = valueHandlers[state];
