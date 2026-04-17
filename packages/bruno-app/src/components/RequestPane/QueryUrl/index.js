@@ -23,6 +23,12 @@ import { isMacOS } from 'utils/common/platform';
 import { hasRequestChanges } from 'utils/collections';
 import StyledWrapper from './StyledWrapper';
 import GenerateCodeItem from 'components/Sidebar/Collections/Collection/CollectionItem/GenerateCodeItem/index';
+import UrlEncodingHint, {
+  VariantE as UrlEncodingHintModalE,
+  useHintVariant,
+  useUrlEncodingAmbiguity
+} from 'components/RequestPane/UrlEncodingHint';
+import VariantPicker from 'components/RequestPane/UrlEncodingHint/VariantPicker';
 import toast from 'react-hot-toast';
 
 const QueryUrl = ({ item, collection, handleRun }) => {
@@ -36,7 +42,23 @@ const QueryUrl = ({ item, collection, handleRun }) => {
   const isLoading = ['queued', 'sending'].includes(item.requestState);
 
   const [generateCodeItemModalOpen, setGenerateCodeItemModalOpen] = useState(false);
+  const [hintModalOpen, setHintModalOpen] = useState(false);
   const hasChanges = useMemo(() => hasRequestChanges(item), [item]);
+  const [hintVariant] = useHintVariant();
+  const { showHint } = useUrlEncodingAmbiguity(item);
+
+  const handleSendWithHintCheck = useCallback(() => {
+    if (
+      hintVariant === 'E'
+      && showHint
+      && item?.uid
+      && !UrlEncodingHintModalE.hasDismissed(item.uid)
+    ) {
+      setHintModalOpen(true);
+      return;
+    }
+    handleRun?.();
+  }, [hintVariant, showHint, item, handleRun]);
 
   const onSave = () => {
     dispatch(saveRequest(item.uid, collection.uid));
@@ -384,76 +406,92 @@ const QueryUrl = ({ item, collection, handleRun }) => {
     dispatch(cancelRequest(item.cancelTokenUid, item, collection));
   };
   return (
-    <StyledWrapper className="flex items-center w-full">
-      <div className="flex items-center h-full url-input-group">
-        <div className="flex items-center h-full min-w-fit">
-          <HttpMethodSelector method={method} onMethodSelect={onMethodSelect} />
-        </div>
-        <div
-          id="request-url"
-          className="h-full w-full flex flex-row items-center input-container overflow-hidden"
-        >
-          <SingleLineEditor
-            ref={editorRef}
-            value={url}
-            placeholder="Enter URL or paste a cURL request"
-            onSave={(finalValue) => onSave(finalValue)}
-            theme={storedTheme}
-            onChange={(newValue) => onUrlChange(newValue)}
-            onRun={handleRun}
-            onPaste={item.type === 'http-request' ? handleHttpPaste : item.type === 'graphql-request' ? handleGraphqlPaste : null}
-            collection={collection}
-            highlightPathParams={true}
-            item={item}
-            showNewlineArrow={true}
-          />
-          <div className="flex items-center h-full mx-2 gap-3" id="request-actions">
-            <div
-              title="Generate Code"
-              className="infotip"
-              onClick={(e) => {
-                handleGenerateCode(e);
-              }}
-            >
-              <IconCode color={theme.requestTabs.icon.color} strokeWidth={1.5} size={20} className="cursor-pointer" />
-              <span className="infotiptext text-xs">Generate Code</span>
-            </div>
-            <div
-              title="Save Request"
-              className="infotip"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (!hasChanges) return;
-                onSave();
-              }}
-            >
-              <IconDeviceFloppy
-                color={hasChanges ? theme.draftColor : theme.requestTabs.icon.color}
-                strokeWidth={1.5}
-                size={20}
-                className={`${hasChanges ? 'cursor-pointer' : 'cursor-default'}`}
-              />
-              <span className="infotiptext text-xs">
-                Save <span className="shortcut">({saveShortcut})</span>
-              </span>
+    <>
+      <StyledWrapper className="flex items-center w-full">
+        <div className="flex items-center h-full url-input-group">
+          <div className="flex items-center h-full min-w-fit">
+            <HttpMethodSelector method={method} onMethodSelect={onMethodSelect} />
+          </div>
+          <div
+            id="request-url"
+            className="h-full w-full flex flex-row items-center input-container overflow-hidden"
+          >
+            <SingleLineEditor
+              ref={editorRef}
+              value={url}
+              placeholder="Enter URL or paste a cURL request"
+              onSave={(finalValue) => onSave(finalValue)}
+              theme={storedTheme}
+              onChange={(newValue) => onUrlChange(newValue)}
+              onRun={handleSendWithHintCheck}
+              onPaste={item.type === 'http-request' ? handleHttpPaste : item.type === 'graphql-request' ? handleGraphqlPaste : null}
+              collection={collection}
+              highlightPathParams={true}
+              item={item}
+              showNewlineArrow={true}
+            />
+            <div className="flex items-center h-full mx-2 gap-3" id="request-actions">
+              <UrlEncodingHint item={item} collection={collection} slot="inline" editorRef={editorRef} />
+              <div
+                title="Generate Code"
+                className="infotip"
+                onClick={(e) => {
+                  handleGenerateCode(e);
+                }}
+              >
+                <IconCode color={theme.requestTabs.icon.color} strokeWidth={1.5} size={20} className="cursor-pointer" />
+                <span className="infotiptext text-xs">Generate Code</span>
+              </div>
+              <div
+                title="Save Request"
+                className="infotip"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!hasChanges) return;
+                  onSave();
+                }}
+              >
+                <IconDeviceFloppy
+                  color={hasChanges ? theme.draftColor : theme.requestTabs.icon.color}
+                  strokeWidth={1.5}
+                  size={20}
+                  className={`${hasChanges ? 'cursor-pointer' : 'cursor-default'}`}
+                />
+                <span className="infotiptext text-xs">
+                  Save <span className="shortcut">({saveShortcut})</span>
+                </span>
+              </div>
             </div>
           </div>
         </div>
-      </div>
-      <SendButton
-        isLoading={isLoading || item.response?.stream?.running}
-        onSend={handleRun}
-        onCancel={handleCancelRequest}
-        testId="send-arrow-icon"
-      />
-      {generateCodeItemModalOpen && (
-        <GenerateCodeItem
-          collectionUid={collection.uid}
+        <SendButton
+          isLoading={isLoading || item.response?.stream?.running}
+          onSend={handleSendWithHintCheck}
+          onCancel={handleCancelRequest}
+          testId="send-arrow-icon"
+        />
+        {generateCodeItemModalOpen && (
+          <GenerateCodeItem
+            collectionUid={collection.uid}
+            item={item}
+            onClose={() => setGenerateCodeItemModalOpen(false)}
+          />
+        )}
+      </StyledWrapper>
+      <UrlEncodingHint item={item} collection={collection} slot="below" />
+      {hintModalOpen && (
+        <UrlEncodingHintModalE
           item={item}
-          onClose={() => setGenerateCodeItemModalOpen(false)}
+          collection={collection}
+          onKeep={() => {
+            setHintModalOpen(false);
+            handleRun?.();
+          }}
+          onCancelSend={() => setHintModalOpen(false)}
         />
       )}
-    </StyledWrapper>
+      <VariantPicker />
+    </>
   );
 };
 
