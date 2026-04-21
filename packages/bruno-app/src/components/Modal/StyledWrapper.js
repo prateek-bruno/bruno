@@ -21,7 +21,7 @@ const Wrapper = styled.div`
     display: flex;
     align-items: flex-start;
     justify-content: center;
-    overflow-y: auto;
+    overflow-y: hidden;
     z-index: 20;
     background-color: rgba(0, 0, 0, 0.5);
   }
@@ -42,6 +42,8 @@ const Wrapper = styled.div`
     margin: 3vh 10vw;
     margin-top: 50px;
     border: 1px solid ${(props) => props.theme.border.border0};
+    max-height: calc(100vh - 56px);
+    overflow: hidden;
 
     &.modal-sm {
       min-width: 300px;
@@ -106,6 +108,8 @@ const Wrapper = styled.div`
 
   .bruno-modal-content {
     flex-grow: 1;
+    overflow-y: auto;
+    min-height: 0;
     background-color: ${(props) => props.theme.modal.body.bg};
 
     .textbox {
