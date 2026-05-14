@@ -1,15 +1,20 @@
 import translateCode from '../utils/postman-to-bruno-translator';
 
+// TODO: Restore the commented-out translations once the UI update fixes are live.
+// Currently these APIs only work within the request lifecycle but fail to update the UI tables.
+// e.g., setCollectionVar only sets the variable in the request lifecycle, fails to update the table in the UI.
 const replacements = {
   'pm\\.environment\\.get\\(': 'bru.getEnvVar(',
   'pm\\.environment\\.set\\(': 'bru.setEnvVar(',
   'pm\\.variables\\.get\\(': 'bru.getVar(',
   'pm\\.variables\\.set\\(': 'bru.setVar(',
   'pm\\.variables\\.replaceIn\\(': 'bru.interpolate(',
-  'pm\\.collectionVariables\\.get\\(': 'bru.getVar(',
-  'pm\\.collectionVariables\\.set\\(': 'bru.setVar(',
-  'pm\\.collectionVariables\\.has\\(': 'bru.hasVar(',
-  'pm\\.collectionVariables\\.unset\\(': 'bru.deleteVar(',
+  'pm\\.collectionVariables\\.get\\(': 'bru.getCollectionVar(',
+  // 'pm\\.collectionVariables\\.set\\(': 'bru.setCollectionVar(',
+  'pm\\.collectionVariables\\.has\\(': 'bru.hasCollectionVar(',
+  // 'pm\\.collectionVariables\\.unset\\(': 'bru.deleteCollectionVar(',
+  // 'pm\\.collectionVariables\\.clear\\(': 'bru.deleteAllCollectionVars(',
+  // 'pm\\.collectionVariables\\.toObject\\(': 'bru.getAllCollectionVars(',
   'pm\\.setNextRequest\\(': 'bru.setNextRequest(',
   'pm\\.test\\(': 'test(',
   'pm.response.to.have\\.status\\(': 'expect(res.getStatus()).to.equal(',
@@ -23,7 +28,22 @@ const replacements = {
   'pm\\.response\\.responseTime': 'res.getResponseTime()',
   'pm\\.globals\\.set\\(': 'bru.setGlobalEnvVar(',
   'pm\\.globals\\.get\\(': 'bru.getGlobalEnvVar(',
+  // 'pm\\.globals\\.unset\\(': 'bru.deleteGlobalEnvVar(',
+  'pm\\.globals\\.toObject\\(': 'bru.getAllGlobalEnvVars(',
+  // 'pm\\.globals\\.clear\\(': 'bru.deleteAllGlobalEnvVars(',
+  'pm\\.environment\\.toObject\\(': 'bru.getAllEnvVars(',
+  'pm\\.environment\\.clear\\(': 'bru.deleteAllEnvVars(',
+  'pm\\.variables\\.toObject\\(': 'bru.getAllVars(',
+  'pm\\.request\\.headers\\.remove\\(': 'req.deleteHeader(',
   'pm\\.response\\.headers\\.get\\(': 'res.getHeader(',
+  'pm\\.response\\.to\\.have\\.jsonSchema\\(': 'expect(res.getBody()).to.have.jsonSchema(',
+  'pm\\.response\\.to\\.not\\.have\\.jsonSchema\\(': 'expect(res.getBody()).to.not.have.jsonSchema(',
+  'pm\\.response\\.not\\.to\\.have\\.jsonSchema\\(': 'expect(res.getBody()).not.to.have.jsonSchema(',
+  'pm\\.response\\.to\\.have\\.not\\.jsonSchema\\(': 'expect(res.getBody()).to.have.not.jsonSchema(',
+  'pm\\.response\\.to\\.have\\.jsonBody\\(': 'expect(res.getBody()).to.have.jsonBody(',
+  'pm\\.response\\.to\\.not\\.have\\.jsonBody\\(': 'expect(res.getBody()).to.not.have.jsonBody(',
+  'pm\\.response\\.not\\.to\\.have\\.jsonBody\\(': 'expect(res.getBody()).not.to.have.jsonBody(',
+  'pm\\.response\\.to\\.have\\.not\\.jsonBody\\(': 'expect(res.getBody()).to.have.not.jsonBody(',
   'pm\\.response\\.to\\.have\\.body\\(': 'expect(res.getBody()).to.equal(',
   'pm\\.response\\.to\\.have\\.header\\(': 'expect(res.getHeaders()).to.have.property(',
   'pm\\.response\\.size\\(\\)': 'res.getSize()',
@@ -68,13 +88,41 @@ const replacements = {
   'pm\\.execution\\.skipRequest': 'bru.runner.skipRequest',
   'pm\\.execution\\.setNextRequest\\(null\\)': 'bru.runner.stopExecution()',
   'pm\\.execution\\.setNextRequest\\(\'null\'\\)': 'bru.runner.stopExecution()',
-  // Cookie jar translations
-  'pm\\.cookies\\.jar\\(\\)': 'bru.cookies.jar()',
+  // Cookie jar translations — order matters:
+  // 1. Specific jar method patterns must come before the general jar() pattern,
+  //    otherwise jar() consumes the prefix and the method patterns never match.
+  // 2. All jar patterns must precede the simpler pm.cookies.* patterns below,
+  //    since replacements are applied in insertion order.
   'pm\\.cookies\\.jar\\(\\)\\.get\\(': 'bru.cookies.jar().getCookie(',
   'pm\\.cookies\\.jar\\(\\)\\.set\\(': 'bru.cookies.jar().setCookie(',
   'pm\\.cookies\\.jar\\(\\)\\.unset\\(': 'bru.cookies.jar().deleteCookie(',
   'pm\\.cookies\\.jar\\(\\)\\.clear\\(': 'bru.cookies.jar().deleteCookies(',
-  'pm\\.cookies\\.jar\\(\\)\\.getAll\\(': 'bru.cookies.jar().getCookies('
+  'pm\\.cookies\\.jar\\(\\)\\.getAll\\(': 'bru.cookies.jar().getCookies(',
+  'pm\\.cookies\\.jar\\(\\)': 'bru.cookies.jar()',
+  // Direct cookie access
+  'pm\\.cookies\\.get\\(': 'bru.cookies.get(',
+  'pm\\.cookies\\.has\\(': 'bru.cookies.has(',
+  'pm\\.cookies\\.toObject\\(': 'bru.cookies.toObject(',
+  'pm\\.cookies\\.toString\\(': 'bru.cookies.toString(',
+  'pm\\.cookies\\.clear\\(': 'bru.cookies.clear(',
+  'pm\\.cookies\\.remove\\(': 'bru.cookies.delete(',
+  // PropertyList cookie methods
+  'pm\\.cookies\\.one\\(': 'bru.cookies.one(',
+  'pm\\.cookies\\.all\\(': 'bru.cookies.all(',
+  'pm\\.cookies\\.idx\\(': 'bru.cookies.idx(',
+  'pm\\.cookies\\.count\\(': 'bru.cookies.count(',
+  'pm\\.cookies\\.indexOf\\(': 'bru.cookies.indexOf(',
+  'pm\\.cookies\\.find\\(': 'bru.cookies.find(',
+  'pm\\.cookies\\.filter\\(': 'bru.cookies.filter(',
+  'pm\\.cookies\\.each\\(': 'bru.cookies.each(',
+  'pm\\.cookies\\.map\\(': 'bru.cookies.map(',
+  'pm\\.cookies\\.reduce\\(': 'bru.cookies.reduce(',
+  'pm\\.cookies\\.add\\(': 'bru.cookies.add(',
+  'pm\\.cookies\\.upsert\\(': 'bru.cookies.upsert(',
+  // Lossy: position-aware inserts map to add (position irrelevant for cookies)
+  'pm\\.cookies\\.prepend\\(': 'bru.cookies.add(',
+  'pm\\.cookies\\.insert\\(': 'bru.cookies.add(',
+  'pm\\.cookies\\.insertAfter\\(': 'bru.cookies.add('
 };
 
 const extendedReplacements = Object.keys(replacements).reduce((acc, key) => {
@@ -91,35 +139,29 @@ const compiledReplacements = Object.entries(extendedReplacements).map(([pattern,
 
 const processRegexReplacement = (code) => {
   for (const { regex, replacement } of compiledReplacements) {
-    if (regex.test(code)) {
-      code = code.replace(regex, replacement);
-    }
-  }
-  if ((code.includes('pm.') || code.includes('postman.'))) {
-    code = code.replace(/^(.*(pm\.|postman\.).*)$/gm, '// $1');
+    code = code.replace(regex, replacement);
   }
   return code;
 };
 
-const postmanTranslation = (script, options = {}) => {
+const postmanTranslation = (script) => {
   let modifiedScript = Array.isArray(script) ? script.join('\n') : script;
+  let translatedScript;
 
   try {
-    let translatedCode = translateCode(modifiedScript);
-    if ((translatedCode.includes('pm.') || translatedCode.includes('postman.'))) {
-      translatedCode = translatedCode.replace(/^(.*(pm\.|postman\.).*)$/gm, '// $1');
-    }
-    return translatedCode;
+    translatedScript = translateCode(modifiedScript);
   } catch (e) {
     console.warn('Error in postman translation:', e);
 
     try {
-      return processRegexReplacement(modifiedScript);
+      translatedScript = processRegexReplacement(modifiedScript);
     } catch (e) {
       console.warn('Error in postman translation:', e);
-      return modifiedScript;
+      translatedScript = modifiedScript;
     }
   }
+
+  return translatedScript;
 };
 
 export default postmanTranslation;

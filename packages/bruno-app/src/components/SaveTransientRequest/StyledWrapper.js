@@ -127,11 +127,84 @@ const StyledWrapper = styled.div`
     color: ${(props) => props.theme.colors.text.muted};
   }
 
+  .collection-list {
+    border: 1px solid ${(props) => props.theme.border.border1};
+    border-radius: ${(props) => props.theme.border.radius.sm};
+    max-height: 320px;
+    overflow-y: auto;
+    background-color: ${(props) => props.theme.modal.body.bg};
+    padding: 8px 8px;
+  }
+
+  .collection-list-items {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    border-radius: ${(props) => props.theme.border.radius.sm};
+  }
+
+  .collection-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+    color: ${(props) => props.theme.text};
+    border-radius: ${(props) => props.theme.border.radius.sm};
+    user-select: none;
+    border: 1px solid ${(props) => props.theme.border.border1};
+
+    &:hover {
+      background-color: ${(props) => props.theme.plainGrid.hoverBg};
+      border-color: ${(props) => props.theme.colors.text.muted};
+    }
+  }
+
+  .collection-item-content {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .collection-item-name {
+    color: ${(props) => props.theme.text};
+    font-weight: 500;
+  }
+
+  .collection-empty-state {
+    padding: 20px 16px;
+    text-align: center;
+    font-size: 14px;
+    color: ${(props) => props.theme.colors.text.muted};
+    line-height: 1.5;
+  }
+
+  .animate-spin {
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .icon-success {
+    color: ${(props) => props.theme.colors.success};
+  }
+
   .custom-modal-footer {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 16px 0px;
+    padding: 16px 0px 0px 0px;
     background-color: ${(props) => props.theme.modal.body.bg};
     border-top: 1px solid ${(props) => props.theme.border.border0};
     border-bottom-left-radius: ${(props) => props.theme.border.radius.base};
@@ -163,30 +236,17 @@ const StyledWrapper = styled.div`
     padding-top: 12px;
   }
 
-  .new-folder-content {
+  .new-folder-header {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     gap: 8px;
+    margin-bottom: 4px;
   }
 
-  .new-folder-inputs {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    flex: 1;
-  }
-
-  .new-folder-name-input-wrapper {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    flex: 1;
-  }
-
-  .new-folder-name-label {
-    font-size: 12px;
+  .new-folder-header-label {
+    font-size: 13px;
     font-weight: 500;
-    color: ${(props) => props.theme.colors.text.muted};
+    color: ${(props) => props.theme.text};
   }
 
   .new-folder-input-row {
@@ -247,13 +307,41 @@ const StyledWrapper = styled.div`
     display: flex;
     flex-direction: column;
     gap: 6px;
-    margin-top: 4px;
   }
 
   .new-folder-filesystem-label {
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 500;
-    color: ${(props) => props.theme.colors.text.muted};
+    color: ${(props) => props.theme.text};
+  }
+
+  .filesystem-input-container {
+    display: flex;
+    align-items: center;
+    background: ${(props) => props.theme.requestTabPanel.url.bg};
+    border-radius: 4px;
+    padding: 8px 12px;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    margin-top: 8px;
+  }
+
+  .filesystem-input-icon {
+    flex-shrink: 0;
+    margin-right: 8px;
+    color: ${(props) => props.theme.colors.text.yellow};
+  }
+
+  .filesystem-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: ${(props) => props.theme.colors.text.yellow};
+    font-size: ${(props) => props.theme.font.size.base};
+
+    &::placeholder {
+      color: ${(props) => props.theme.colors.text.muted};
+    }
   }
 
   .new-folder-toggle-filesystem-btn {
@@ -281,6 +369,98 @@ const StyledWrapper = styled.div`
     color: ${(props) => props.theme.colors.danger};
     font-size: 12px;
     margin-top: 4px;
+  }
+
+  /* New Collection Input Styles */
+  .new-collection-item {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px;
+    border-top: 1px solid ${(props) => props.theme.border.border1};
+    margin-top: 4px;
+
+    &:first-child {
+      border-top: none;
+      margin-top: 0;
+    }
+  }
+
+  .new-collection-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .new-collection-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: ${(props) => props.theme.text};
+  }
+
+  .new-collection-input {
+    width: 100%;
+    padding: 8px 10px;
+    border-radius: ${(props) => props.theme.border.radius.sm};
+    background-color: ${(props) => props.theme.input.bg};
+    border: 1px solid ${(props) => props.theme.input.border};
+    color: ${(props) => props.theme.text};
+    font-size: 14px;
+    transition: border-color ease-in-out 0.1s;
+
+    &:focus {
+      border: solid 1px ${(props) => props.theme.input.focusBorder} !important;
+      outline: none !important;
+    }
+
+    &::placeholder {
+      color: ${(props) => props.theme.colors.text.muted};
+    }
+
+    &.cursor-pointer {
+      cursor: pointer;
+    }
+  }
+
+  .new-collection-location-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .new-collection-select {
+    width: 100%;
+    padding: 8px 10px;
+    padding-right: 28px;
+    border-radius: ${(props) => props.theme.border.radius.sm};
+    background-color: ${(props) => props.theme.input.bg};
+    border: 1px solid ${(props) => props.theme.input.border};
+    color: ${(props) => props.theme.text};
+    font-size: 14px;
+    cursor: pointer;
+    transition: border-color ease-in-out 0.1s;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+
+    &:focus {
+      border: solid 1px ${(props) => props.theme.input.focusBorder} !important;
+      outline: none !important;
+    }
+  }
+
+  .new-collection-actions-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 4px;
+  }
+
+  .collection-empty-state-subtitle {
+    font-size: 12px;
+    margin-top: 4px;
+    opacity: 0.8;
   }
 `;
 

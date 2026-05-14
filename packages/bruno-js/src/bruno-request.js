@@ -96,10 +96,16 @@ class BrunoRequest {
   getAuthMode() {
     if (this.req?.oauth2) {
       return 'oauth2';
+    } else if (this.req?.oauth1config) {
+      return 'oauth1';
     } else if (this.headers?.['Authorization']?.startsWith('Bearer')) {
       return 'bearer';
     } else if (this.headers?.['Authorization']?.startsWith('Basic') || this.req?.auth?.username) {
       return 'basic';
+    } else if (this.req?.apiKeyAuthValueForQueryParams) {
+      return 'apikey';
+    } else if (this.req?.apiKeyHeaderName && this.headers?.[this.req.apiKeyHeaderName] !== undefined) {
+      return 'apikey';
     } else if (this.req?.awsv4) {
       return 'awsv4';
     } else if (this.req?.digestConfig) {
@@ -125,6 +131,10 @@ class BrunoRequest {
     this.req.headers = headers;
   }
 
+  deleteHeaders(headers) {
+    headers.forEach((name) => this.deleteHeader(name));
+  }
+
   getHeader(name) {
     return this.req.headers[name];
   }
@@ -132,6 +142,23 @@ class BrunoRequest {
   setHeader(name, value) {
     this.headers[name] = value;
     this.req.headers[name] = value;
+  }
+
+  deleteHeader(name) {
+    delete this.headers[name];
+    delete this.req.headers[name];
+
+    /**
+      Store header name to be applied in the axios request interceptor.
+      Default headers (user-agent, accept, accept-encoding, etc.) are added after
+      the pre-request script runs, so we track them here and delete them later.
+    */
+    if (!this.req.__headersToDelete) {
+      this.req.__headersToDelete = [];
+    }
+    if (!this.req.__headersToDelete.includes(name)) {
+      this.req.__headersToDelete.push(name);
+    }
   }
 
   hasJSONContentType(headers) {

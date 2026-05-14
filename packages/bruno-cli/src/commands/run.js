@@ -18,6 +18,8 @@ const constants = require('../constants');
 const { findItemInCollection, createCollectionJsonFromPathname, getCallStack, FORMAT_CONFIG } = require('../utils/collection');
 const { hasExecutableTestInScript } = require('../utils/request');
 const { createSkippedFileResults } = require('../utils/run');
+const { sanitizeResultsForReporter } = require('../utils/sanitize-results');
+const { getSystemProxy } = require('@usebruno/requests');
 const command = 'run [paths...]';
 const desc = 'Run one or more requests/folders';
 
@@ -199,13 +201,33 @@ const builder = async (yargs) => {
       description: 'Skip specific headers from the reporter output',
       default: []
     })
+    .option('reporter-skip-request-body', {
+      type: 'boolean',
+      description: 'Omit request body from the reporter output',
+      default: false
+    })
+    .option('reporter-skip-response-body', {
+      type: 'boolean',
+      description: 'Omit response body from the reporter output',
+      default: false
+    })
+    .option('reporter-skip-body', {
+      type: 'boolean',
+      description: 'Omit both request and response bodies from the reporter output',
+      default: false
+    })
     .option('client-cert-config', {
       type: 'string',
       description: 'Path to the Client certificate config file used for securing the connection in the request'
     })
-    .option('--noproxy', {
+    .option('noproxy', {
       type: 'boolean',
       description: 'Disable all proxy settings (both collection-defined and system proxies)',
+      default: false
+    })
+    .option('cache-ssl-session', {
+      type: 'boolean',
+      description: 'Enable SSL session caching — reuses TLS sessions across requests for faster handshakes',
       default: false
     })
     .option('delay', {
@@ -231,6 +253,9 @@ const builder = async (yargs) => {
     .example('$0 run folder -r', 'Run all requests in a folder recursively')
     .example('$0 run request.bru folder', 'Run a request and all requests in a folder')
     .example('$0 run --reporter-skip-all-headers', 'Run all requests in a folder recursively with omitted headers from the reporter output')
+    .example('$0 run --reporter-skip-request-body', 'Run all requests with request bodies omitted from the reporter output')
+    .example('$0 run --reporter-skip-response-body', 'Run all requests with response bodies omitted from the reporter output')
+    .example('$0 run --reporter-skip-body', 'Run all requests with both request and response bodies omitted from the reporter output')
     .example(
       '$0 run --reporter-skip-headers "Authorization"',
       'Run all requests in a folder recursively with skipped headers from the reporter output'
@@ -305,8 +330,12 @@ const handler = async function (argv) {
       bail,
       reporterSkipAllHeaders,
       reporterSkipHeaders,
+      reporterSkipRequestBody,
+      reporterSkipResponseBody,
+      reporterSkipBody,
       clientCertConfig,
       noproxy,
+      cacheSslSession,
       delay,
       tags: includeTags,
       excludeTags,
@@ -374,7 +403,7 @@ const handler = async function (argv) {
         result.__name__ = nameOverride || path.basename(filePath, fileExt);
       } else {
         const content = fs.readFileSync(filePath, 'utf8').replace(/\r\n/g, '\n');
-        const envJson = parseEnvironment(content);
+        const envJson = parseEnvironment(content, { format: 'bru' });
         result = getEnvVars(envJson);
         result.__name__ = nameOverride || path.basename(filePath, '.bru');
       }
@@ -508,6 +537,9 @@ const handler = async function (argv) {
     if (noproxy) {
       options['noproxy'] = true;
     }
+    if (cacheSslSession) {
+      options['cacheSslSession'] = true;
+    }
     if (verbose) {
       options['verbose'] = true;
     }
@@ -608,6 +640,15 @@ const handler = async function (argv) {
 
     const runtime = getJsSandboxRuntime(sandbox);
 
+    // Fetch system proxy once for all requests (skip if --noproxy flag is set)
+    if (!noproxy) {
+      try {
+        options['cachedSystemProxy'] = await getSystemProxy();
+      } catch (error) {
+        console.warn(chalk.yellow('Failed to detect system proxy, continuing without system proxy'));
+      }
+    }
+
     const runSingleRequestByPathname = async (relativeItemPathname) => {
       const ext = FORMAT_CONFIG[collection.format].ext;
       return new Promise(async (resolve, reject) => {
@@ -676,35 +717,12 @@ const handler = async function (argv) {
         path: result.test?.filename || path.relative(collectionPath, pathname)
       });
 
-      if (reporterSkipAllHeaders) {
-        results.forEach((result) => {
-          result.request.headers = {};
-          result.response.headers = {};
-        });
-      }
-
-      const deleteHeaderIfExists = (headers, header) => {
-        Object.keys(headers).forEach((key) => {
-          if (key.toLowerCase() === header.toLowerCase()) {
-            delete headers[key];
-          }
-        });
-      };
-
-      if (reporterSkipHeaders?.length) {
-        results.forEach((result) => {
-          if (result.request?.headers) {
-            reporterSkipHeaders.forEach((header) => {
-              deleteHeaderIfExists(result.request.headers, header);
-            });
-          }
-          if (result.response?.headers) {
-            reporterSkipHeaders.forEach((header) => {
-              deleteHeaderIfExists(result.response.headers, header);
-            });
-          }
-        });
-      }
+      sanitizeResultsForReporter(results, {
+        skipAllHeaders: reporterSkipAllHeaders,
+        skipHeaders: reporterSkipHeaders,
+        skipRequestBody: reporterSkipRequestBody || reporterSkipBody,
+        skipResponseBody: reporterSkipResponseBody || reporterSkipBody
+      });
 
       // bail if option is set and there is a failure
       if (bail) {

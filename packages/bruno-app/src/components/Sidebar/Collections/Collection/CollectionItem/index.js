@@ -26,7 +26,7 @@ import { handleCollectionItemDrop, sendRequest, showInFolder, pasteItem, saveReq
 import { toggleCollectionItem, addResponseExample } from 'providers/ReduxStore/slices/collections';
 import { insertTaskIntoQueue } from 'providers/ReduxStore/slices/app';
 import { uuid } from 'utils/common';
-import { copyRequest } from 'providers/ReduxStore/slices/app';
+import { copyRequest, setFocusedSidebarPath } from 'providers/ReduxStore/slices/app';
 import NewRequest from 'components/Sidebar/NewRequest';
 import NewFolder from 'components/Sidebar/NewFolder';
 import RenameCollectionItem from './RenameCollectionItem';
@@ -47,6 +47,7 @@ import ExampleIcon from 'components/Icons/ExampleIcon';
 import { scrollToTheActiveTab } from 'utils/tabs';
 import { isTabForItemActive as isTabForItemActiveSelector, isTabForItemPresent as isTabForItemPresentSelector } from 'src/selectors/tab';
 import { isEqual } from 'lodash';
+import { createEmptyStateMenuItems } from 'utils/collections/emptyStateRequest';
 import { calculateDraggedItemNewPathname, getInitialExampleName, findParentItemInCollection } from 'utils/collections/index';
 import { sortByNameThenSequence } from 'utils/common/index';
 import { getRevealInFolderLabel } from 'utils/common/platform';
@@ -55,6 +56,7 @@ import { openDevtoolsAndSwitchToTerminal } from 'utils/terminal';
 import ActionIcon from 'ui/ActionIcon';
 import MenuDropdown from 'ui/MenuDropdown';
 import { useSidebarAccordion } from 'components/Sidebar/SidebarAccordionContext';
+import useKeybinding from 'hooks/useKeybinding';
 
 const CollectionItem = ({ item, collectionUid, collectionPathname, searchText }) => {
   const { dropdownContainerRef } = useSidebarAccordion();
@@ -90,6 +92,27 @@ const CollectionItem = ({ item, collectionUid, collectionPathname, searchText })
 
   // Check if request has examples (only for HTTP requests)
   const hasExamples = isItemARequest(item) && item.type === 'http-request' && item.examples && item.examples.length > 0;
+
+  // Sidebar shortcuts — only active when this sidebar item has keyboard focus
+  useKeybinding('cloneItem', () => {
+    setCloneItemModalOpen(true);
+    return false;
+  }, { enabled: isKeyboardFocused, deps: [isKeyboardFocused] });
+
+  useKeybinding('copyItem', () => {
+    handleCopyItem();
+    return false;
+  }, { enabled: isKeyboardFocused, deps: [isKeyboardFocused] });
+
+  useKeybinding('pasteItem', () => {
+    handlePasteItem();
+    return false;
+  }, { enabled: isKeyboardFocused, deps: [isKeyboardFocused] });
+
+  useKeybinding('renameItem', () => {
+    setRenameItemModalOpen(true);
+    return false;
+  }, { enabled: isKeyboardFocused, deps: [isKeyboardFocused] });
 
   const [dropType, setDropType] = useState(null); // 'adjacent' or 'inside'
 
@@ -463,7 +486,7 @@ const CollectionItem = ({ item, collectionUid, collectionPathname, searchText })
     const exampleData = {
       name: name,
       description: description,
-      status: '200',
+      status: 200,
       statusText: 'OK',
       headers: [],
       body: {
@@ -504,6 +527,9 @@ const CollectionItem = ({ item, collectionUid, collectionPathname, searchText })
 
   const folderItems = sortByNameThenSequence(filter(item.items, (i) => isItemAFolder(i) && !i.isTransient));
   const requestItems = sortItemsBySequence(filter(item.items, (i) => isItemARequest(i) && !i.isTransient));
+  const showEmptyFolderMessage = isFolder && !hasSearchText && !folderItems?.length && !requestItems?.length;
+
+  const emptyFolderMenuItems = createEmptyStateMenuItems({ dispatch, collection, itemUid: item.uid });
 
   const handleGenerateCode = () => {
     if (
@@ -535,7 +561,7 @@ const CollectionItem = ({ item, collectionUid, collectionPathname, searchText })
   const handleCopyItem = () => {
     dispatch(copyRequest(item));
     const itemType = isFolder ? 'Folder' : 'Request';
-    toast.success(`${itemType} copied to clipboard`);
+    toast.success(`${itemType} copied`);
   };
 
   const handlePasteItem = () => {
@@ -555,29 +581,15 @@ const CollectionItem = ({ item, collectionUid, collectionPathname, searchText })
       });
   };
 
-  // Keyboard shortcuts handler
-  const handleKeyDown = (e) => {
-    // Detect Mac by checking both metaKey and platform
-    const isMac = navigator.userAgent?.includes('Mac') || navigator.platform?.startsWith('Mac');
-    const isModifierPressed = isMac ? e.metaKey : e.ctrlKey;
-
-    if (isModifierPressed && e.key.toLowerCase() === 'c') {
-      e.preventDefault();
-      e.stopPropagation();
-      handleCopyItem();
-    } else if (isModifierPressed && e.key.toLowerCase() === 'v') {
-      e.preventDefault();
-      e.stopPropagation();
-      handlePasteItem();
-    }
-  };
-
   const handleFocus = () => {
     setIsKeyboardFocused(true);
+    // For folders, set the folder path; for requests, set empty string (no terminal)
+    dispatch(setFocusedSidebarPath(isFolder ? item.pathname : ''));
   };
 
   const handleBlur = () => {
     setIsKeyboardFocused(false);
+    dispatch(setFocusedSidebarPath(null));
   };
 
   return (
@@ -620,7 +632,6 @@ const CollectionItem = ({ item, collectionUid, collectionPathname, searchText })
           drag(drop(node));
         }}
         tabIndex={0}
-        onKeyDown={handleKeyDown}
         onFocus={handleFocus}
         onBlur={handleBlur}
         onContextMenu={handleContextMenu}
@@ -636,7 +647,7 @@ const CollectionItem = ({ item, collectionUid, collectionPathname, searchText })
                   key={i}
                   style={{ width: 16, minWidth: 16, height: '100%' }}
                 >
-                  &nbsp;{/* Indent */}
+                &nbsp;{/* Indent */}
                 </div>
               ))
             : null}
@@ -708,6 +719,25 @@ const CollectionItem = ({ item, collectionUid, collectionPathname, searchText })
                 return <CollectionItem key={i.uid} item={i} collectionUid={collectionUid} collectionPathname={collectionPathname} searchText={searchText} />;
               })
             : null}
+          {showEmptyFolderMessage ? (
+            <div className="empty-folder-message">
+              {range(item.depth + 1).map((i) => (
+                <div className="indent-block" key={i} style={{ width: 16, minWidth: 16, height: '100%' }}>
+                  &nbsp;
+                </div>
+              ))}
+              <div style={{ paddingLeft: 8 }}>
+                <MenuDropdown
+                  items={emptyFolderMenuItems}
+                  placement="bottom-start"
+                  appendTo={dropdownContainerRef?.current || document.body}
+                  popperOptions={{ strategy: 'fixed' }}
+                >
+                  <button className="ml-1 add-request-link">+ Add request</button>
+                </MenuDropdown>
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
 

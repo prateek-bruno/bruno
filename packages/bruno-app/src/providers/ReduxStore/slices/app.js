@@ -1,13 +1,15 @@
 import { createSlice } from '@reduxjs/toolkit';
 import filter from 'lodash/filter';
 import brunoClipboard from 'utils/bruno-clipboard';
-import { addTab, focusTab, closeTabs } from './tabs';
+import { addTab, focusTab } from './tabs';
 
 const initialState = {
   isDragging: false,
   idbConnectionReady: false,
   leftSidebarWidth: 250,
   sidebarCollapsed: false,
+  showSidebarSearch: false,
+  focusedSidebarPath: null,
   screenWidth: 500,
   showHomePage: false,
   showApiSpecPage: false,
@@ -34,11 +36,20 @@ const initialState = {
       codeFont: 'default'
     },
     general: {
-      defaultCollectionLocation: ''
+      defaultLocation: ''
+    },
+    onboarding: {
+      hasLaunchedBefore: false,
+      hasSeenWelcomeModal: true
     },
     autoSave: {
       enabled: false,
       interval: 1000
+    },
+    cache: {
+      sslSession: {
+        enabled: false
+      }
     }
   },
   generateCode: {
@@ -48,10 +59,17 @@ const initialState = {
   },
   cookies: [],
   taskQueue: [],
+  gitOperationProgress: {},
+  gitVersion: null,
   clipboard: {
     hasCopiedItems: false // Whether clipboard has Bruno data (for UI)
   },
-  systemProxyVariables: {}
+  systemProxyVariables: {},
+  envVarSearch: {
+    collection: { query: '', expanded: false },
+    global: { query: '', expanded: false }
+  },
+  isCreatingCollection: false
 };
 
 export const appSlice = createSlice({
@@ -123,9 +141,39 @@ export const appSlice = createSlice({
     toggleSidebarCollapse: (state) => {
       state.sidebarCollapsed = !state.sidebarCollapsed;
     },
+    toggleSidebarSearch: (state) => {
+      state.showSidebarSearch = !state.showSidebarSearch;
+    },
+    setFocusedSidebarPath: (state, action) => {
+      state.focusedSidebarPath = action.payload;
+    },
+    updateGitOperationProgress: (state, action) => {
+      const { uid, data } = action.payload;
+      if (!state.gitOperationProgress[uid]) {
+        state.gitOperationProgress[uid] = { progressData: [] };
+      }
+      state.gitOperationProgress[uid].progressData.push(data);
+    },
+    removeGitOperationProgress: (state, action) => {
+      delete state.gitOperationProgress[action.payload];
+    },
+    setGitVersion: (state, action) => {
+      state.gitVersion = action.payload;
+    },
     setClipboard: (state, action) => {
       // Update clipboard UI state
       state.clipboard.hasCopiedItems = action.payload.hasCopiedItems;
+    },
+    setEnvVarSearchQuery: (state, { payload: { context, query } }) => {
+      if (!state.envVarSearch[context]) return;
+      state.envVarSearch[context].query = query;
+    },
+    setEnvVarSearchExpanded: (state, { payload: { context, expanded } }) => {
+      if (!state.envVarSearch[context]) return;
+      state.envVarSearch[context].expanded = expanded;
+    },
+    setIsCreatingCollection: (state, action) => {
+      state.isCreatingCollection = action.payload;
     }
   },
   extraReducers: (builder) => {
@@ -164,7 +212,15 @@ export const {
   updateSystemProxyVariables,
   updateGenerateCode,
   toggleSidebarCollapse,
-  setClipboard
+  toggleSidebarSearch,
+  setFocusedSidebarPath,
+  updateGitOperationProgress,
+  removeGitOperationProgress,
+  setGitVersion,
+  setClipboard,
+  setEnvVarSearchQuery,
+  setEnvVarSearchExpanded,
+  setIsCreatingCollection
 } = appSlice.actions;
 
 export const savePreferences = (preferences) => (dispatch, getState) => {
@@ -245,6 +301,25 @@ export const getSystemProxyVariables = () => (dispatch, getState) => {
         return variables;
       })
       .then(resolve).catch(reject);
+  });
+};
+
+export const refreshSystemProxy = () => (dispatch, getState) => {
+  return new Promise((resolve, reject) => {
+    const { ipcRenderer } = window;
+    ipcRenderer.invoke('renderer:refresh-system-proxy')
+      .then((variables) => {
+        dispatch(updateSystemProxyVariables(variables));
+        return variables;
+      })
+      .then(resolve).catch(reject);
+  });
+};
+
+export const clearHttpHttpsAgentCache = () => () => {
+  return new Promise((resolve, reject) => {
+    const { ipcRenderer } = window;
+    ipcRenderer.invoke('renderer:clear-http-https-agent-cache').then(resolve).catch(reject);
   });
 };
 

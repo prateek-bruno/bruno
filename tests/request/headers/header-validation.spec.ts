@@ -2,6 +2,8 @@ import { test, expect } from '../../../playwright';
 import { closeAllCollections, createCollection, createRequest, openCollection, openRequest, saveRequest, selectRequestPaneTab } from '../../utils/page';
 import { getTableCell } from '../../utils/page/locators';
 
+const saveShortcut = process.platform === 'darwin' ? 'Meta+s' : 'Control+s';
+
 test.describe.serial('Header Validation', () => {
   test.afterAll(async ({ page }) => {
     await closeAllCollections(page);
@@ -51,14 +53,16 @@ test.describe.serial('Header Validation', () => {
       const headerRow = page.locator('table tbody tr').first();
       const nameCell = getTableCell(headerRow, 0);
 
-      // Clear and enter a valid header name
-      await nameCell.locator('.CodeMirror').click();
-      await page.keyboard.press('Meta+a');
+      // Clear and enter a valid header name - use triple-click to select all (works cross-platform)
+      await nameCell.locator('.CodeMirror').click({ clickCount: 3 });
       await nameCell.locator('textarea').fill('Valid-Header');
 
       // Verify the error icon is not visible
       const errorIcon = headerRow.locator('.text-red-600');
-      await expect(errorIcon).not.toBeVisible();
+
+      // wait for formik to revalidate
+      await headerRow.click();
+      await expect(errorIcon).not.toBeVisible({});
     });
   });
 
@@ -87,7 +91,7 @@ test.describe.serial('Header Validation', () => {
       await expect(tooltip).toContainText('Header value cannot contain newlines');
 
       // Save the request
-      await page.keyboard.press('Control+s');
+      await page.keyboard.press(saveShortcut);
     });
   });
 });

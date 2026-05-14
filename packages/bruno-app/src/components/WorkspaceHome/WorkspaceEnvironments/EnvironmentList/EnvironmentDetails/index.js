@@ -1,4 +1,4 @@
-import { IconCopy, IconEdit, IconTrash, IconCheck, IconX } from '@tabler/icons';
+import { IconCopy, IconEdit, IconTrash, IconCheck, IconX, IconSearch } from '@tabler/icons';
 import { useState, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { renameGlobalEnvironment, updateGlobalEnvironmentColor } from 'providers/ReduxStore/slices/global-environments';
@@ -10,7 +10,7 @@ import EnvironmentVariables from './EnvironmentVariables';
 import ColorPicker from 'components/ColorPicker';
 import StyledWrapper from './StyledWrapper';
 
-const EnvironmentDetails = ({ environment, setIsModified, collection }) => {
+const EnvironmentDetails = ({ environment, setIsModified, collection, searchQuery, setSearchQuery, isSearchExpanded, setIsSearchExpanded, debouncedSearchQuery, searchInputRef }) => {
   const dispatch = useDispatch();
   const globalEnvs = useSelector((state) => state?.globalEnvironments?.globalEnvironments);
 
@@ -111,14 +111,25 @@ const EnvironmentDetails = ({ environment, setIsModified, collection }) => {
     }
   };
 
+  const handleSearchIconClick = () => {
+    setIsSearchExpanded(true);
+    setTimeout(() => {
+      searchInputRef.current?.focus();
+    }, 50);
+  };
+
+  const handleClearSearch = () => {
+    setSearchQuery('');
+  };
+
+  const handleSearchBlur = () => {
+    if (searchQuery === '') {
+      setIsSearchExpanded(false);
+    }
+  };
+
   const handleColorChange = (color) => {
-    dispatch(updateGlobalEnvironmentColor(environment.uid, color))
-      .then(() => {
-        toast.success('Environment color updated!');
-      })
-      .catch(() => {
-        toast.error('An error occurred while updating the environment color');
-      });
+    dispatch(updateGlobalEnvironmentColor(environment.uid, color));
   };
 
   return (
@@ -178,6 +189,38 @@ const EnvironmentDetails = ({ environment, setIsModified, collection }) => {
         </div>
         {nameError && isRenaming && <div className="title-error">{nameError}</div>}
         <div className="actions">
+          {isSearchExpanded ? (
+            <div className="search-input-wrapper">
+              <IconSearch size={14} strokeWidth={1.5} className="search-icon" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                placeholder="Search variables..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onBlur={handleSearchBlur}
+                className="search-input"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck="false"
+              />
+              {searchQuery && (
+                <button
+                  className="clear-search"
+                  onClick={handleClearSearch}
+                  onMouseDown={(e) => e.preventDefault()}
+                  title="Clear search"
+                >
+                  <IconX size={14} strokeWidth={1.5} />
+                </button>
+              )}
+            </div>
+          ) : (
+            <button onClick={handleSearchIconClick} title="Search variables">
+              <IconSearch size={15} strokeWidth={1.5} />
+            </button>
+          )}
           <button onClick={handleRenameClick} title="Rename">
             <IconEdit size={15} strokeWidth={1.5} />
           </button>
@@ -191,7 +234,12 @@ const EnvironmentDetails = ({ environment, setIsModified, collection }) => {
       </div>
 
       <div className="content">
-        <EnvironmentVariables environment={environment} setIsModified={setIsModified} collection={collection} />
+        <EnvironmentVariables
+          environment={environment}
+          setIsModified={setIsModified}
+          collection={collection}
+          searchQuery={debouncedSearchQuery}
+        />
       </div>
     </StyledWrapper>
   );

@@ -16,42 +16,34 @@ const {
   parseCollection,
   parseFolder
 } = require('@usebruno/filestore');
-const { parseDotEnv } = require('@usebruno/filestore');
 
 const { uuid } = require('../utils/common');
 const { getRequestUid } = require('../cache/requestUids');
 const { decryptStringSafe } = require('../utils/encryption');
-const { setDotEnvVars } = require('../store/process-env');
 const { setBrunoConfig } = require('../store/bruno-config');
 const EnvironmentSecretsStore = require('../store/env-secrets');
 const UiStateSnapshot = require('../store/ui-state-snapshot');
 const { parseFileMeta, hydrateRequestWithUuid } = require('../utils/collection');
 const { parseLargeRequestWithRedaction } = require('../utils/parse');
 const { transformBrunoConfigAfterRead } = require('../utils/transformBrunoConfig');
+const dotEnvWatcher = require('./dotenv-watcher');
 
 const MAX_FILE_SIZE = 2.5 * 1024 * 1024;
 
 const environmentSecretsStore = new EnvironmentSecretsStore();
 
-const isDotEnvFile = (pathname, collectionPath) => {
-  const dirname = path.dirname(pathname);
-  const basename = path.basename(pathname);
-
-  return dirname === collectionPath && basename === '.env';
-};
-
 const isBrunoConfigFile = (pathname, collectionPath) => {
   const dirname = path.dirname(pathname);
   const basename = path.basename(pathname);
 
-  return dirname === collectionPath && basename === 'bruno.json';
+  return path.normalize(dirname) === path.normalize(collectionPath) && basename === 'bruno.json';
 };
 
 const isEnvironmentsFolder = (pathname, collectionPath) => {
   const dirname = path.dirname(pathname);
   const envDirectory = path.join(collectionPath, 'environments');
 
-  return dirname === envDirectory;
+  return path.normalize(dirname) === path.normalize(envDirectory);
 };
 
 const isFolderRootFile = (pathname, collectionPath) => {
@@ -72,7 +64,7 @@ const isCollectionRootFile = (pathname, collectionPath) => {
   const basename = path.basename(pathname);
 
   // return if we are not at the root of the collection
-  if (dirname !== collectionPath) {
+  if (path.normalize(dirname) !== path.normalize(collectionPath)) {
     return false;
   }
 
@@ -222,24 +214,6 @@ const add = async (win, pathname, collectionUid, collectionPath, useWorkerThread
       };
 
       win.webContents.send('main:bruno-config-update', payload);
-    } catch (err) {
-      console.error(err);
-    }
-  }
-
-  if (isDotEnvFile(pathname, collectionPath)) {
-    try {
-      const content = fs.readFileSync(pathname, 'utf8');
-      const jsonData = parseDotEnv(content);
-
-      setDotEnvVars(collectionUid, jsonData);
-      const payload = {
-        collectionUid,
-        processEnvVariables: {
-          ...jsonData
-        }
-      };
-      win.webContents.send('main:process-env-update', payload);
     } catch (err) {
       console.error(err);
     }
@@ -411,7 +385,7 @@ const add = async (win, pathname, collectionUid, collectionPath, useWorkerThread
 const addDirectory = async (win, pathname, collectionUid, collectionPath) => {
   const envDirectory = path.join(collectionPath, 'environments');
 
-  if (pathname === envDirectory) {
+  if (path.normalize(pathname) === path.normalize(envDirectory)) {
     return;
   }
 
@@ -463,26 +437,6 @@ const change = async (win, pathname, collectionUid, collectionPath) => {
       };
 
       win.webContents.send('main:bruno-config-update', payload);
-    } catch (err) {
-      console.error(err);
-    }
-
-    return;
-  }
-
-  if (isDotEnvFile(pathname, collectionPath)) {
-    try {
-      const content = fs.readFileSync(pathname, 'utf8');
-      const jsonData = parseDotEnv(content);
-
-      setDotEnvVars(collectionUid, jsonData);
-      const payload = {
-        collectionUid,
-        processEnvVariables: {
-          ...jsonData
-        }
-      };
-      win.webContents.send('main:process-env-update', payload);
     } catch (err) {
       console.error(err);
     }
@@ -598,58 +552,84 @@ const change = async (win, pathname, collectionUid, collectionPath) => {
 };
 
 const unlink = (win, pathname, collectionUid, collectionPath) => {
-  console.log(`watcher unlink: ${pathname}`);
-
-  if (isEnvironmentsFolder(pathname, collectionPath)) {
-    return unlinkEnvironmentFile(win, pathname, collectionUid);
-  }
-
-  const format = getCollectionFormat(collectionPath);
-  if (hasRequestExtension(pathname, format)) {
-    const basename = path.basename(pathname);
-    const dirname = path.dirname(pathname);
-
-    if (basename === 'opencollection.yml' && dirname === collectionPath) {
+  try {
+    if (!fs.existsSync(collectionPath)) {
       return;
     }
+    console.log(`watcher unlink: ${pathname}`);
 
-    const file = {
-      meta: {
-        collectionUid,
-        pathname,
-        name: basename
+    if (isEnvironmentsFolder(pathname, collectionPath)) {
+      return unlinkEnvironmentFile(win, pathname, collectionUid);
+    }
+
+    let format;
+    try {
+      format = getCollectionFormat(collectionPath);
+    } catch (error) {
+      console.error(`Error getting collection format for: ${collectionPath}`, error);
+      return;
+    }
+    if (hasRequestExtension(pathname, format)) {
+      const basename = path.basename(pathname);
+      const dirname = path.dirname(pathname);
+
+      if (basename === 'opencollection.yml' && path.normalize(dirname) === path.normalize(collectionPath)) {
+        return;
       }
-    };
-    win.webContents.send('main:collection-tree-updated', 'unlink', file);
+
+      const file = {
+        meta: {
+          collectionUid,
+          pathname,
+          name: basename
+        }
+      };
+      win.webContents.send('main:collection-tree-updated', 'unlink', file);
+    }
+  } catch (err) {
+    console.error(`Error processing unlink event for: ${pathname}`, err);
   }
 };
 
 const unlinkDir = async (win, pathname, collectionUid, collectionPath) => {
-  const envDirectory = path.join(collectionPath, 'environments');
-
-  if (pathname === envDirectory) {
-    return;
-  }
-
-  const format = getCollectionFormat(collectionPath);
-  const folderFilePath = path.join(pathname, `folder.${format}`);
-
-  let name = path.basename(pathname);
-
-  if (fs.existsSync(folderFilePath)) {
-    let folderFileContent = fs.readFileSync(folderFilePath, 'utf8');
-    let folderData = await parseFolder(folderFileContent, { format });
-    name = folderData?.meta?.name || name;
-  }
-
-  const directory = {
-    meta: {
-      collectionUid,
-      pathname,
-      name
+  try {
+    if (!fs.existsSync(collectionPath)) {
+      return;
     }
-  };
-  win.webContents.send('main:collection-tree-updated', 'unlinkDir', directory);
+    const envDirectory = path.join(collectionPath, 'environments');
+
+    if (path.normalize(pathname) === path.normalize(envDirectory)) {
+      return;
+    }
+
+    let format;
+    try {
+      format = getCollectionFormat(collectionPath);
+    } catch (error) {
+      console.error(`Error getting collection format for: ${collectionPath}`, error);
+      return;
+    }
+    const folderFilePath = path.join(pathname, `folder.${format}`);
+
+    let name = path.basename(pathname);
+
+    if (fs.existsSync(folderFilePath)) {
+      let folderFileContent = fs.readFileSync(folderFilePath, 'utf8');
+      let folderData = await parseFolder(folderFileContent, { format });
+      name = folderData?.meta?.name || name;
+    }
+
+    const directory = {
+      meta: {
+        collectionUid,
+        pathname,
+        name
+      }
+    };
+    win.webContents.send('main:collection-tree-updated', 'unlinkDir', directory);
+  } catch (err) {
+    console.error(`Error processing unlinkDir event for: ${pathname}`, err);
+  }
 };
 
 const onWatcherSetupComplete = (win, watchPath, collectionUid, watcher) => {
@@ -658,7 +638,7 @@ const onWatcherSetupComplete = (win, watchPath, collectionUid, watcher) => {
 
   const UiStateSnapshotStore = new UiStateSnapshot();
   const collectionsSnapshotState = UiStateSnapshotStore.getCollections();
-  const collectionSnapshotState = collectionsSnapshotState?.find((c) => c?.pathname == watchPath);
+  const collectionSnapshotState = collectionsSnapshotState?.find((c) => c?.pathname && path.normalize(c.pathname) === path.normalize(watchPath));
   win.webContents.send('main:hydrate-app-with-ui-state-snapshot', collectionSnapshotState);
 };
 
@@ -759,6 +739,12 @@ class CollectionWatcher {
         ignored: (filepath) => {
           const normalizedPath = normalizeAndResolvePath(filepath);
           const relativePath = path.relative(watchPath, normalizedPath);
+          const basename = path.basename(filepath);
+
+          // Ignore .env files - handled by dotenv-watcher
+          if (basename === '.env' || basename.startsWith('.env.')) {
+            return true;
+          }
 
           // Check if any path segment matches a default ignore pattern (handles symlinks)
           const pathSegments = relativePath.split(path.sep);
@@ -811,6 +797,8 @@ class CollectionWatcher {
         });
 
       this.watchers[watchPath] = watcher;
+
+      dotEnvWatcher.addCollectionWatcher(win, watchPath, collectionUid);
     }, 100);
   }
 
@@ -823,6 +811,8 @@ class CollectionWatcher {
       this.watchers[watchPath].close();
       this.watchers[watchPath] = null;
     }
+
+    dotEnvWatcher.removeCollectionWatcher(watchPath);
 
     const tempDirectoryPath = this.tempDirectoryMap[watchPath];
     if (tempDirectoryPath && this.watchers[tempDirectoryPath]) {
@@ -967,6 +957,15 @@ class CollectionWatcher {
     return Object.entries(this.watchers)
       .filter(([path, watcher]) => !!watcher)
       .map(([path, _watcher]) => path);
+  }
+
+  closeAllWatchers() {
+    for (const [watchPath, watcher] of Object.entries(this.watchers)) {
+      try {
+        watcher?.close();
+      } catch (err) {}
+    }
+    this.watchers = {};
   }
 }
 

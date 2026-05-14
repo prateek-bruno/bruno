@@ -10,6 +10,7 @@ const yaml = require('js-yaml');
 const LastOpenedWorkspaces = require('../store/last-opened-workspaces');
 const { defaultWorkspaceManager } = require('../store/default-workspace');
 const { globalEnvironmentsManager } = require('../store/workspace-environments');
+const { globalEnvironmentsStore } = require('../store/global-environments');
 
 const {
   createWorkspaceConfig,
@@ -20,6 +21,7 @@ const {
   updateWorkspaceDocs,
   addCollectionToWorkspace,
   removeCollectionFromWorkspace,
+  reorderWorkspaceCollections,
   getWorkspaceCollections,
   normalizeCollectionEntry,
   validateWorkspacePath,
@@ -190,6 +192,18 @@ const registerWorkspaceIpc = (mainWindow, workspaceWatcher) => {
     }
   });
 
+  ipcMain.handle('renderer:reorder-workspace-collections', async (event, workspacePath, collectionPaths) => {
+    try {
+      if (!workspacePath) {
+        throw new Error('Workspace path is undefined');
+      }
+      validateWorkspacePath(workspacePath);
+      await reorderWorkspaceCollections(workspacePath, collectionPaths);
+    } catch (error) {
+      throw error;
+    }
+  });
+
   ipcMain.handle('renderer:load-workspace-apispecs', async (event, workspacePath) => {
     try {
       if (!workspacePath) {
@@ -211,15 +225,17 @@ const registerWorkspaceIpc = (mainWindow, workspaceWatcher) => {
 
       const specs = workspaceConfig.specs || [];
 
-      const resolvedSpecs = specs.map((spec) => {
-        if (spec.path && !path.isAbsolute(spec.path)) {
-          return {
-            ...spec,
-            path: path.join(workspacePath, spec.path)
-          };
-        }
-        return spec;
-      });
+      const resolvedSpecs = specs
+        .map((spec) => {
+          if (spec.path && !path.isAbsolute(spec.path)) {
+            return {
+              ...spec,
+              path: path.join(workspacePath, spec.path)
+            };
+          }
+          return spec;
+        })
+        .filter((spec) => spec.path && fs.existsSync(spec.path));
 
       return resolvedSpecs;
     } catch (error) {
@@ -265,6 +281,7 @@ const registerWorkspaceIpc = (mainWindow, workspaceWatcher) => {
   ipcMain.handle('renderer:close-workspace', async (event, workspacePath) => {
     try {
       lastOpenedWorkspaces.remove(workspacePath);
+      globalEnvironmentsStore.removeActiveGlobalEnvironmentUidForWorkspace(workspacePath);
 
       if (workspaceWatcher) {
         workspaceWatcher.removeWatcher(workspacePath);
@@ -448,14 +465,6 @@ const registerWorkspaceIpc = (mainWindow, workspaceWatcher) => {
   ipcMain.handle('renderer:delete-workspace-environment', async (event, workspacePath, environmentUid) => {
     try {
       return await globalEnvironmentsManager.deleteGlobalEnvironment(workspacePath, { environmentUid });
-    } catch (error) {
-      throw error;
-    }
-  });
-
-  ipcMain.handle('renderer:select-workspace-environment', async (event, workspacePath, environmentUid) => {
-    try {
-      return await globalEnvironmentsManager.selectGlobalEnvironment(workspacePath, { environmentUid });
     } catch (error) {
       throw error;
     }
@@ -693,6 +702,8 @@ const registerWorkspaceIpc = (mainWindow, workspaceWatcher) => {
     } catch (error) {
       console.error('Error initializing workspaces:', error);
     }
+
+    ipcMain.emit('main:workspaces-ready', win);
   });
 };
 

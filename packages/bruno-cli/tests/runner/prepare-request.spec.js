@@ -72,6 +72,7 @@ describe('prepare-request: prepareRequest', () => {
 
         const result = await prepareRequest(item, collection);
         expect(result.headers).toHaveProperty('x-api-key', '{{apiKey}}');
+        expect(result.apiKeyHeaderName).toEqual('x-api-key');
       });
 
       it('If collection auth is apikey in header and request has existing headers', async () => {
@@ -88,6 +89,7 @@ describe('prepare-request: prepareRequest', () => {
         const result = await prepareRequest(item, collection);
         expect(result.headers).toHaveProperty('Content-Type', 'application/json');
         expect(result.headers).toHaveProperty('x-api-key', '{{apiKey}}');
+        expect(result.apiKeyHeaderName).toEqual('x-api-key');
       });
 
       it('If collection auth is apikey in query parameters', async () => {
@@ -106,6 +108,7 @@ describe('prepare-request: prepareRequest', () => {
         const expected = urlObj.toString();
         const result = await prepareRequest(item, collection);
         expect(result.url).toEqual(expected);
+        expect(result.apiKeyHeaderName).toBeUndefined();
       });
     });
 
@@ -355,6 +358,7 @@ describe('prepare-request: prepareRequest', () => {
 
         const result = await prepareRequest(item);
         expect(result.headers).toHaveProperty('x-api-key', '{{apiKey}}');
+        expect(result.apiKeyHeaderName).toEqual('x-api-key');
       });
 
       it('If request auth is apikey in header and request has existing headers', async () => {
@@ -371,6 +375,7 @@ describe('prepare-request: prepareRequest', () => {
         const result = await prepareRequest(item);
         expect(result.headers).toHaveProperty('Content-Type', 'application/json');
         expect(result.headers).toHaveProperty('x-api-key', '{{apiKey}}');
+        expect(result.apiKeyHeaderName).toEqual('x-api-key');
       });
 
       it('If request auth is apikey in query parameters', async () => {
@@ -389,6 +394,7 @@ describe('prepare-request: prepareRequest', () => {
         const expected = urlObj.toString();
         const result = await prepareRequest(item);
         expect(result.url).toEqual(expected);
+        expect(result.apiKeyHeaderName).toBeUndefined();
       });
     });
 
@@ -598,6 +604,52 @@ describe('prepare-request: prepareRequest', () => {
       expect(result.data).toBe(mockStream);
       expect(createReadStreamSpy).toHaveBeenCalled();
       expect(readFileSyncSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('GraphQL request', () => {
+    it('keeps variables as string for interpolation', async () => {
+      const item = {
+        request: {
+          method: 'POST',
+          headers: [],
+          params: [],
+          url: 'https://example.com',
+          body: {
+            mode: 'graphql',
+            graphql: {
+              query: 'query { x }',
+              variables: '{"apiPermissions": {{permissionsJSON}}}'
+            }
+          }
+        }
+      };
+      const result = await prepareRequest(item);
+      expect(result.mode).toBe('graphql');
+      expect(result.data).toMatchObject({ query: 'query { x }' });
+      expect(typeof result.data.variables).toBe('string');
+      expect(result.data.variables).toBe('{"apiPermissions": {{permissionsJSON}}}');
+    });
+
+    it('defaults variables to "{}" when missing', async () => {
+      const item = {
+        request: {
+          method: 'POST',
+          headers: [],
+          params: [],
+          url: 'https://example.com',
+          body: {
+            mode: 'graphql',
+            graphql: {
+              query: 'query { x }',
+              variables: undefined
+            }
+          }
+        }
+      };
+      const result = await prepareRequest(item);
+      expect(typeof result.data.variables).toBe('string');
+      expect(result.data.variables).toBe('{}');
     });
   });
 });

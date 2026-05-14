@@ -1,6 +1,6 @@
 import React, { useCallback } from 'react';
 import get from 'lodash/get';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { useTheme } from 'providers/Theme';
 import {
   moveFormUrlEncodedParam,
@@ -8,13 +8,24 @@ import {
 } from 'providers/ReduxStore/slices/collections';
 import MultiLineEditor from 'components/MultiLineEditor';
 import { sendRequest, saveRequest } from 'providers/ReduxStore/slices/collections/actions';
+import { updateTableColumnWidths } from 'providers/ReduxStore/slices/tabs';
 import EditableTable from 'components/EditableTable';
 import StyledWrapper from './StyledWrapper';
 
 const FormUrlEncodedParams = ({ item, collection }) => {
   const dispatch = useDispatch();
   const { storedTheme } = useTheme();
+  const tabs = useSelector((state) => state.tabs.tabs);
+  const activeTabUid = useSelector((state) => state.tabs.activeTabUid);
   const params = item.draft ? get(item, 'draft.request.body.formUrlEncoded') : get(item, 'request.body.formUrlEncoded');
+
+  // Get column widths from Redux
+  const focusedTab = tabs?.find((t) => t.uid === activeTabUid);
+  const formUrlEncodedWidths = focusedTab?.tableColumnWidths?.['form-url-encoded'] || {};
+
+  const handleColumnWidthsChange = (tableId, widths) => {
+    dispatch(updateTableColumnWidths({ uid: activeTabUid, tableId, widths }));
+  };
 
   const onSave = () => dispatch(saveRequest(item.uid, collection.uid));
   const handleRun = () => dispatch(sendRequest(item, collection.uid));
@@ -47,7 +58,7 @@ const FormUrlEncodedParams = ({ item, collection }) => {
       key: 'value',
       name: 'Value',
       placeholder: 'Value',
-      render: ({ row, value, onChange, isLastEmptyRow }) => (
+      render: ({ value, onChange }) => (
         <MultiLineEditor
           value={value || ''}
           theme={storedTheme}
@@ -57,7 +68,7 @@ const FormUrlEncodedParams = ({ item, collection }) => {
           onRun={handleRun}
           collection={collection}
           item={item}
-          placeholder={isLastEmptyRow ? 'Value' : ''}
+          placeholder={!value ? 'Value' : ''}
         />
       )
     }
@@ -72,12 +83,15 @@ const FormUrlEncodedParams = ({ item, collection }) => {
   return (
     <StyledWrapper className="w-full">
       <EditableTable
+        tableId="form-url-encoded"
         columns={columns}
         rows={params || []}
         onChange={handleParamsChange}
         defaultRow={defaultRow}
         reorderable={true}
         onReorder={handleParamDrag}
+        columnWidths={formUrlEncodedWidths}
+        onColumnWidthsChange={(widths) => handleColumnWidthsChange('form-url-encoded', widths)}
       />
     </StyledWrapper>
   );

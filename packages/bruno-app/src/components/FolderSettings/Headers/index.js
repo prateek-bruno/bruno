@@ -1,9 +1,10 @@
 import React, { useState, useCallback } from 'react';
 import get from 'lodash/get';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { useTheme } from 'providers/Theme';
 import { setFolderHeaders } from 'providers/ReduxStore/slices/collections';
 import { saveFolderRoot } from 'providers/ReduxStore/slices/collections/actions';
+import { updateTableColumnWidths } from 'providers/ReduxStore/slices/tabs';
 import SingleLineEditor from 'components/SingleLineEditor';
 import EditableTable from 'components/EditableTable';
 import StyledWrapper from './StyledWrapper';
@@ -18,10 +19,20 @@ const headerAutoCompleteList = StandardHTTPHeaders.map((e) => e.header);
 const Headers = ({ collection, folder }) => {
   const dispatch = useDispatch();
   const { storedTheme } = useTheme();
+  const tabs = useSelector((state) => state.tabs.tabs);
+  const activeTabUid = useSelector((state) => state.tabs.activeTabUid);
   const headers = folder.draft
     ? get(folder, 'draft.request.headers', [])
     : get(folder, 'root.request.headers', []);
   const [isBulkEditMode, setIsBulkEditMode] = useState(false);
+
+  // Get column widths from Redux
+  const focusedTab = tabs?.find((t) => t.uid === activeTabUid);
+  const folderHeadersWidths = focusedTab?.tableColumnWidths?.['folder-headers'] || {};
+
+  const handleColumnWidthsChange = (tableId, widths) => {
+    dispatch(updateTableColumnWidths({ uid: activeTabUid, tableId, widths }));
+  };
 
   const toggleBulkEditMode = () => {
     setIsBulkEditMode(!isBulkEditMode);
@@ -60,7 +71,7 @@ const Headers = ({ collection, folder }) => {
       isKeyField: true,
       placeholder: 'Name',
       width: '30%',
-      render: ({ row, value, onChange, isLastEmptyRow }) => (
+      render: ({ value, onChange }) => (
         <SingleLineEditor
           value={value || ''}
           theme={storedTheme}
@@ -68,7 +79,7 @@ const Headers = ({ collection, folder }) => {
           onChange={(newValue) => onChange(newValue.replace(/[\r\n]/g, ''))}
           autocomplete={headerAutoCompleteList}
           collection={collection}
-          placeholder={isLastEmptyRow ? 'Name' : ''}
+          placeholder={!value ? 'Name' : ''}
         />
       )
     },
@@ -76,7 +87,7 @@ const Headers = ({ collection, folder }) => {
       key: 'value',
       name: 'Value',
       placeholder: 'Value',
-      render: ({ row, value, onChange, isLastEmptyRow }) => (
+      render: ({ value, onChange }) => (
         <SingleLineEditor
           value={value || ''}
           theme={storedTheme}
@@ -85,7 +96,7 @@ const Headers = ({ collection, folder }) => {
           collection={collection}
           item={folder}
           autocomplete={MimeTypes}
-          placeholder={isLastEmptyRow ? 'Value' : ''}
+          placeholder={!value ? 'Value' : ''}
         />
       )
     }
@@ -119,11 +130,14 @@ const Headers = ({ collection, folder }) => {
         Request headers that will be sent with every request inside this folder.
       </div>
       <EditableTable
+        tableId="folder-headers"
         columns={columns}
         rows={headers}
         onChange={handleHeadersChange}
         defaultRow={defaultRow}
         getRowError={getRowError}
+        columnWidths={folderHeadersWidths}
+        onColumnWidthsChange={(widths) => handleColumnWidthsChange('folder-headers', widths)}
       />
       <div className="flex justify-end mt-2">
         <button className="text-link select-none" onClick={toggleBulkEditMode}>

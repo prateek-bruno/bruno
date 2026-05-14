@@ -5,6 +5,7 @@ const addBrunoResponseShimToContext = require('./shims/bruno-response');
 const addTestShimToContext = require('./shims/test');
 const addLibraryShimsToContext = require('./shims/lib');
 const addLocalModuleLoaderShimToContext = require('./shims/local-module');
+const { getRequireCode } = require('./shims/require');
 const { newQuickJSWASMModule, memoizePromiseFactory } = require('quickjs-emscripten');
 
 // execute `npm run sandbox:bundle-libraries` if the below file doesn't exist
@@ -12,6 +13,7 @@ const getBundledCode = require('../bundle-browser-rollup');
 const addPathShimToContext = require('./shims/lib/path');
 const { marshallToVm } = require('./utils');
 const addCryptoUtilsShimToContext = require('./shims/lib/crypto-utils');
+const { wrapScriptInClosure, SANDBOX } = require('../../utils/sandbox');
 
 let QuickJSSyncContext;
 const loader = memoizePromiseFactory(() => newQuickJSWASMModule());
@@ -89,7 +91,7 @@ const executeQuickJsVm = ({ script: externalScript, context: externalContext, sc
   }
 };
 
-const executeQuickJsVmAsync = async ({ script: externalScript, context: externalContext, collectionPath }) => {
+const executeQuickJsVmAsync = async ({ script: externalScript, context: externalContext, collectionPath, scriptPath }) => {
   if (!externalScript?.length || typeof externalScript !== 'string') {
     return externalScript;
   }
@@ -103,44 +105,11 @@ const executeQuickJsVmAsync = async ({ script: externalScript, context: external
     await addCryptoUtilsShimToContext(vm);
 
     const bundledCode = getBundledCode?.toString() || '';
-    const moduleLoaderCode = function () {
-      return `
-        globalThis.require = (mod) => {
-          let lib = globalThis.requireObject[mod];
-          let isModuleAPath = (module) => (module?.startsWith('.') || module?.startsWith?.(bru.cwd()))
-          if (lib) {
-            return lib;
-          }
-          else if (isModuleAPath(mod)) {
-            // fetch local module
-            let localModuleCode = globalThis.__brunoLoadLocalModule(mod);
-
-            // compile local module as iife
-            (function (){
-              const initModuleExportsCode = "const module = { exports: {} };"
-              const copyModuleExportsCode = "\\n;globalThis.requireObject[mod] = module.exports;";
-              const patchedRequire = ${`
-                "\\n;" +
-                "let require = (subModule) => isModuleAPath(subModule) ? globalThis.require(path.resolve(bru.cwd(), mod, '..', subModule)) : globalThis.require(subModule)" +
-                "\\n;" 
-              `}
-              eval(initModuleExportsCode + patchedRequire + localModuleCode + copyModuleExportsCode);
-            })();
-
-            // resolve module
-            return globalThis.requireObject[mod];
-          }
-          else {
-            throw new Error("Cannot find module " + mod);
-          }
-        }
-      `;
-    };
 
     vm.evalCode(
       `
         (${bundledCode})()
-        ${moduleLoaderCode()}
+        ${getRequireCode()}
       `
     );
 
@@ -157,25 +126,9 @@ const executeQuickJsVmAsync = async ({ script: externalScript, context: external
 
     test && __brunoTestResults && addTestShimToContext(vm, __brunoTestResults);
 
-    const script = `
-      (async () => {
-        const setTimeout = async(fn, timer) => {
-          v = await bru.sleep(timer);
-          fn.apply();
-        }
-        await bru.sleep(0);
-        try {
-          ${externalScript}
-        }
-        catch(error) {
-          console?.debug?.('quick-js:execution-end:with-error', error?.message);
-          throw new Error(error?.message);
-        }
-        return 'done';
-      })()
-    `;
+    const script = wrapScriptInClosure(externalScript, SANDBOX.QUICKJS);
 
-    const result = vm.evalCode(script);
+    const result = vm.evalCode(script, scriptPath);
     const promiseHandle = vm.unwrapResult(result);
     const resolvedResult = await vm.resolvePromise(promiseHandle);
     promiseHandle.dispose();
@@ -184,8 +137,8 @@ const executeQuickJsVmAsync = async ({ script: externalScript, context: external
     // vm.dispose();
     return;
   } catch (error) {
-    console.error('Error executing the script!', error);
-    throw new Error(error);
+    error.__isQuickJS = true;
+    throw error;
   }
 };
 

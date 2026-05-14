@@ -8,7 +8,8 @@ import GrpcRequestPane from 'components/RequestPane/GrpcRequestPane/index';
 import ResponsePane from 'components/ResponsePane';
 import GrpcResponsePane from 'components/ResponsePane/GrpcResponsePane';
 import { findItemInCollection } from 'utils/collections';
-import { cancelRequest, sendRequest } from 'providers/ReduxStore/slices/collections/actions';
+import { sendRequest } from 'providers/ReduxStore/slices/collections/actions';
+import { updateGqlDocsOpen } from 'providers/ReduxStore/slices/tabs';
 import RequestNotFound from './RequestNotFound';
 import QueryUrl from 'components/RequestPane/QueryUrl/index';
 import GrpcQueryUrl from 'components/RequestPane/GrpcQueryUrl/index';
@@ -31,11 +32,15 @@ import WsQueryUrl from 'components/RequestPane/WsQueryUrl';
 import WSRequestPane from 'components/RequestPane/WSRequestPane';
 import WSResponsePane from 'components/ResponsePane/WsResponsePane';
 import { useTabPaneBoundaries } from 'hooks/useTabPaneBoundaries/index';
+import useKeybinding from 'hooks/useKeybinding';
+import { ScopedPersistenceProvider } from 'hooks/usePersistedState/PersistedScopeProvider';
 import ResponseExample from 'components/ResponseExample';
-import WorkspaceHome from 'components/WorkspaceHome';
+import WorkspaceOverview from 'components/WorkspaceHome/WorkspaceOverview';
 import Preferences from 'components/Preferences';
 import EnvironmentSettings from 'components/Environments/EnvironmentSettings';
 import GlobalEnvironmentSettings from 'components/Environments/GlobalEnvironmentSettings';
+import OpenAPISyncTab from 'components/OpenAPISyncTab';
+import OpenAPISpecTab from 'components/OpenAPISpecTab';
 
 const MIN_LEFT_PANE_WIDTH = 300;
 const MIN_RIGHT_PANE_WIDTH = 490;
@@ -43,9 +48,6 @@ const MIN_TOP_PANE_HEIGHT = 150;
 const MIN_BOTTOM_PANE_HEIGHT = 150;
 
 const RequestTabPanel = () => {
-  if (typeof window == 'undefined') {
-    return <div></div>;
-  }
   const dispatch = useDispatch();
   const tabs = useSelector((state) => state.tabs.tabs);
   const activeTabUid = useSelector((state) => state.tabs.activeTabUid);
@@ -53,8 +55,18 @@ const RequestTabPanel = () => {
   const { globalEnvironments, activeGlobalEnvironmentUid } = useSelector((state) => state.globalEnvironments);
   const _collections = useSelector((state) => state.collections.collections);
   const preferences = useSelector((state) => state.app.preferences);
+  const { workspaces, activeWorkspaceUid } = useSelector((state) => state.workspaces);
+  const activeWorkspace = workspaces.find((w) => w.uid === activeWorkspaceUid);
   const isVerticalLayout = preferences?.layout?.responsePaneOrientation === 'vertical';
   const isConsoleOpen = useSelector((state) => state.logs.isConsoleOpen);
+
+  const isRequestTab = focusedTab && ['request', 'grpc-request', 'ws-request', 'graphql-request'].includes(focusedTab.type);
+  useKeybinding('sendRequest', (e) => {
+    e?.preventDefault?.();
+    e?.stopPropagation?.();
+    handleRun();
+    return false;
+  }, { enabled: !!isRequestTab, deps: [isRequestTab] });
 
   // Use ref to avoid stale closure in event handlers
   const isVerticalLayoutRef = useRef(isVerticalLayout);
@@ -91,18 +103,24 @@ const RequestTabPanel = () => {
   const mainSectionRef = useRef(null);
 
   const [schema, setSchema] = useState(null);
-  const [showGqlDocs, setShowGqlDocs] = useState(false);
+
+  // Get gqlDocsOpen from Redux for persistence across tab switches
+  const showGqlDocs = focusedTab?.gqlDocsOpen || false;
+
   const onSchemaLoad = useCallback((schema) => setSchema(schema), []);
-  const toggleDocs = useCallback(() => setShowGqlDocs((prev) => !prev), []);
+  const toggleDocs = useCallback((value = null) => {
+    const newValue = value !== null ? !!value : !showGqlDocs;
+    dispatch(updateGqlDocsOpen({ uid: activeTabUid, gqlDocsOpen: newValue }));
+  }, [dispatch, activeTabUid, showGqlDocs]);
 
   const handleGqlClickReference = useCallback((reference) => {
     if (docExplorerRef.current) {
       docExplorerRef.current.showDocForReference(reference);
     }
     if (!showGqlDocs) {
-      setShowGqlDocs(true);
+      dispatch(updateGqlDocsOpen({ uid: activeTabUid, gqlDocsOpen: true }));
     }
-  }, []);
+  }, [dispatch, activeTabUid, showGqlDocs]);
 
   const handleMouseMove = useCallback((e) => {
     if (!draggingRef.current || !mainSectionRef.current) return;
@@ -171,8 +189,12 @@ const RequestTabPanel = () => {
     }
   }, [isConsoleOpen, isVerticalLayout]);
 
+  if (typeof window == 'undefined') {
+    return <div></div>;
+  }
+
   if (!activeTabUid || !focusedTab) {
-    return <div className="pb-4 px-4">An error occurred!</div>;
+    return <div className="pb-4 px-4">Loading...</div>;
   }
 
   if (focusedTab.type === 'global-environment-settings') {
@@ -181,6 +203,14 @@ const RequestTabPanel = () => {
 
   if (focusedTab.type === 'preferences') {
     return <Preferences />;
+  }
+
+  if (focusedTab.type === 'workspaceOverview') {
+    return activeWorkspace ? <WorkspaceOverview workspace={activeWorkspace} /> : null;
+  }
+
+  if (focusedTab.type === 'workspaceEnvironments') {
+    return <GlobalEnvironmentSettings />;
   }
 
   if (!focusedTab.uid || !focusedTab.collectionUid) {
@@ -234,6 +264,14 @@ const RequestTabPanel = () => {
     return <EnvironmentSettings collection={collection} />;
   }
 
+  if (focusedTab.type === 'openapi-sync') {
+    return <OpenAPISyncTab collection={collection} />;
+  }
+
+  if (focusedTab.type === 'openapi-spec') {
+    return <OpenAPISpecTab collection={collection} />;
+  }
+
   if (!item || !item.uid) {
     return <RequestNotFound itemUid={activeTabUid} />;
   }
@@ -263,20 +301,13 @@ const RequestTabPanel = () => {
       toast.error('Please enter a valid WebSocket URL');
       return;
     }
-
-    if (item.response?.stream?.running) {
-      dispatch(cancelRequest(item.cancelTokenUid, item, collection)).catch((err) =>
-        toast.custom((t) => <NetworkError onClose={() => toast.dismiss(t.id)} />, {
-          duration: 5000
-        }));
-    } else if (item.requestState !== 'sending' && item.requestState !== 'queued') {
+    if (item.requestState !== 'sending' && item.requestState !== 'queued') {
       dispatch(sendRequest(item, collection.uid)).catch((err) =>
         toast.custom((t) => <NetworkError onClose={() => toast.dismiss(t.id)} />, {
           duration: 5000
         }));
     }
   };
-
   const renderQueryUrl = () => {
     if (isGrpcRequest) {
       return <GrpcQueryUrl item={item} collection={collection} handleRun={handleRun} />;
@@ -332,50 +363,52 @@ const RequestTabPanel = () => {
       };
 
   return (
-    <StyledWrapper
-      className={`flex flex-col flex-grow relative ${dragging ? 'dragging' : ''} ${
-        isVerticalLayout ? 'vertical-layout' : ''
-      }`}
-    >
-      <div className="pt-3 pb-3 px-4">
-        {renderQueryUrl()}
-      </div>
-      <section ref={mainSectionRef} className={`main flex ${isVerticalLayout ? 'flex-col' : ''} flex-grow pb-4 relative overflow-auto`}>
-        <section className="request-pane">
+    <ScopedPersistenceProvider scope={focusedTab.uid}>
+      <StyledWrapper
+        className={`flex flex-col flex-grow relative ${dragging ? 'dragging' : ''} ${
+          isVerticalLayout ? 'vertical-layout' : ''
+        }`}
+      >
+        <div className="pt-3 pb-3 px-4">
+          {renderQueryUrl()}
+        </div>
+        <section ref={mainSectionRef} className={`main flex ${isVerticalLayout ? 'flex-col' : ''} flex-grow pb-4 relative overflow-auto`}>
+          <section className="request-pane" data-testid="request-pane">
+            <div
+              className="px-4 h-full"
+              style={requestPaneStyle}
+            >
+              {renderRequestPane()}
+            </div>
+          </section>
+
           <div
-            className="px-4 h-full"
-            style={requestPaneStyle}
+            className="dragbar-wrapper"
+            onDoubleClick={(e) => {
+              e.preventDefault();
+              resetPaneBoundaries();
+            }}
+            onMouseDown={handleDragbarMouseDown}
           >
-            {renderRequestPane()}
+            <div className="dragbar-handle" />
           </div>
+
+          <section className="response-pane flex-grow overflow-x-auto" data-testid="response-pane">
+            {renderResponsePane()}
+          </section>
         </section>
 
-        <div
-          className="dragbar-wrapper"
-          onDoubleClick={(e) => {
-            e.preventDefault();
-            resetPaneBoundaries();
-          }}
-          onMouseDown={handleDragbarMouseDown}
-        >
-          <div className="dragbar-handle" />
-        </div>
-
-        <section className="response-pane flex-grow overflow-x-auto">
-          {renderResponsePane()}
-        </section>
-      </section>
-
-      {item.type === 'graphql-request' ? (
-        <div className={`graphql-docs-explorer-container ${showGqlDocs ? '' : 'hidden'}`}>
-          <DocExplorer schema={schema} ref={(r) => (docExplorerRef.current = r)}>
-            <button className="mr-2" onClick={toggleDocs} aria-label="Close Documentation Explorer">
-              {'\u2715'}
-            </button>
-          </DocExplorer>
-        </div>
-      ) : null}
-    </StyledWrapper>
+        {item.type === 'graphql-request' ? (
+          <div className={`graphql-docs-explorer-container ${showGqlDocs ? '' : 'hidden'}`}>
+            <DocExplorer schema={schema} ref={(r) => (docExplorerRef.current = r)}>
+              <button className="mr-2" data-testid="graphql-docs-close-button" onClick={() => toggleDocs(false)} aria-label="Close Documentation Explorer">
+                {'\u2715'}
+              </button>
+            </DocExplorer>
+          </div>
+        ) : null}
+      </StyledWrapper>
+    </ScopedPersistenceProvider>
   );
 };
 
