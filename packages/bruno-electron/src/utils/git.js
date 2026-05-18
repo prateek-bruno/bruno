@@ -1,7 +1,7 @@
 const simpleGit = require('simple-git');
 const fs = require('fs');
 const path = require('path');
-const { exec } = require('child_process');
+const { exec, execSync } = require('child_process');
 const { parseRequest } = require('@usebruno/filestore');
 
 let collectionPathToGitRootPathMap = new Map();
@@ -45,20 +45,25 @@ const handleGitOutput = ({ win, processUid, sendStdout = false }) => (command, s
 };
 
 const findGitRootPath = (collectionPath) => {
-  const gitPath = path.join(collectionPath, '.git');
   try {
-    if (fs.existsSync(gitPath)) {
-      return gitPath?.split('.git')?.[0];
-    } else {
-      const parentDir = path.dirname(collectionPath);
-      if (parentDir === collectionPath) {
-        return null;
-      } else {
-        return findGitRootPath(parentDir);
-      }
+    if (!fs.existsSync(collectionPath)) {
+      return null;
     }
+
+    const result = execSync('git rev-parse --show-toplevel', {
+      cwd: collectionPath,
+      stdio: ['ignore', 'pipe', 'ignore']
+    });
+    const rootPath = result.toString().trim();
+
+    if (!rootPath) {
+      return null;
+    }
+
+    const normalized = path.normalize(rootPath);
+    return normalized.endsWith(path.sep) ? normalized : normalized + path.sep;
   } catch (err) {
-    console.error('Error finding .git path:', err);
+    console.error('Error finding git root path:', err);
     return null;
   }
 };
