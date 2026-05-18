@@ -463,11 +463,23 @@ export const exportApiSpec = ({ variables, items, name, environments }) => {
       if (!acc[item?.url]) {
         acc[item?.url] = {};
       }
-      acc[item?.url][item?.method] = item?.data;
-      // Add operation-level server override inside the operation object (not path-item level)
-      // so the import can read it back from operationObject.servers
+      const operation = item?.data;
+
       if (item?.operationLevelServer) {
-        acc[item?.url][item?.method].servers = [item.operationLevelServer];
+        // Add operation-level server override inside the operation object (not path-item level)
+        // so the import can read it back from operationObject.servers
+        operation.servers = [item.operationLevelServer];
+      }
+
+      let operationObject = acc[item?.url][item?.method];
+
+      if (operationObject) {
+        operationObject['x-bruno-variants'] = [
+          ...(operationObject['x-bruno-variants'] || []),
+          operation
+        ];
+      } else {
+        acc[item?.url][item?.method] = operation;
       }
       return acc;
     }, {});

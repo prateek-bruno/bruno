@@ -128,6 +128,8 @@ describe('exportApiSpec - server variables reconstruction', () => {
       {
         name: 'Get users',
         type: 'http-request',
+        pathname: 'collection\\Active Users\\Get users.bru',
+        depth: 2,
         request: {
           url: '{{baseUrl}}/users',
           method: 'GET',
@@ -206,6 +208,83 @@ describe('exportApiSpec - server variables reconstruction', () => {
     expect(pathServers[0].url).toBe('{protocol}://{region}.example.com/v2');
     expect(pathServers[0].variables.protocol.default).toBe('https');
     expect(pathServers[0].variables.region.default).toBe('us-east');
+  });
+});
+
+describe('exportApiSpec - duplicate operation variants', () => {
+  it('should preserve duplicate path and method requests in x-bruno-variants', () => {
+    const items = [
+      {
+        name: 'Get users',
+        type: 'http-request',
+        pathname: 'collection\\Active Users\\Get users.bru',
+        depth: 2,
+        request: {
+          url: '{{baseUrl}}/users',
+          method: 'GET',
+          params: [{ name: 'status', value: 'active', enabled: true, type: 'query' }],
+          headers: [],
+          body: {},
+          auth: {}
+        }
+      },
+      {
+        name: 'Get users inactive',
+        type: 'http-request',
+        pathname: 'collection\\Inactive Users\\Get users inactive.bru',
+        depth: 2,
+        request: {
+          url: '{{baseUrl}}/users',
+          method: 'GET',
+          params: [{ name: 'status', value: 'inactive', enabled: true, type: 'query' }],
+          headers: [],
+          body: {},
+          auth: {},
+          vars: {
+            req: [{ name: 'baseUrl', value: 'https://files.example.com', enabled: true }]
+          }
+        }
+      },
+      {
+        name: 'Get users pending',
+        type: 'http-request',
+        pathname: 'collection\\Pending Users\\Get users pending.bru',
+        depth: 2,
+        request: {
+          url: '{{baseUrl}}/users',
+          method: 'GET',
+          params: [{ name: 'status', value: 'pending', enabled: true, type: 'query' }],
+          headers: [],
+          body: {},
+          auth: {},
+          vars: {
+            req: [{ name: 'baseUrl', value: 'https://audit.example.com', enabled: true }]
+          }
+        }
+      }
+    ];
+
+    const { content } = exportApiSpec({
+      variables: { baseUrl: 'https://api.example.com' },
+      items,
+      name: 'Test API'
+    });
+    const parsed = require('js-yaml').load(content);
+    const operation = parsed.paths['/users'].get;
+    const variants = operation['x-bruno-variants'];
+
+    expect(operation.summary).toBe('Get users');
+    expect(operation.tags).toEqual(['Active Users']);
+    expect(operation.parameters[0]).toMatchObject({ name: 'status', example: 'active' });
+    expect(variants).toHaveLength(2);
+    expect(variants[0].summary).toBe('Get users inactive');
+    expect(variants[0].tags).toEqual(['Inactive Users']);
+    expect(variants[0].parameters[0]).toMatchObject({ name: 'status', example: 'inactive' });
+    expect(variants[0].servers[0].url).toBe('https://files.example.com');
+    expect(variants[1].summary).toBe('Get users pending');
+    expect(variants[1].tags).toEqual(['Pending Users']);
+    expect(variants[1].parameters[0]).toMatchObject({ name: 'status', example: 'pending' });
+    expect(variants[1].servers[0].url).toBe('https://audit.example.com');
   });
 });
 
