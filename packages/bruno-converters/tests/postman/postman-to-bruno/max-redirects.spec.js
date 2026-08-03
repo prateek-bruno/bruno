@@ -26,7 +26,7 @@ describe('postman maxRedirects import', () => {
     }
   );
 
-  it.each([-1, 3.5, '100', 'abc', '', true, [], NaN, Infinity])(
+  it.each([-1, 3.5, '100', 'abc', '', true, [], NaN, Infinity, null])(
     'should drop a maxRedirects of %p and warn instead of failing the import',
     async (maxRedirects) => {
       const { settings, issues } = await importPostmanRequestWithMaxRedirects(maxRedirects);
@@ -36,17 +36,10 @@ describe('postman maxRedirects import', () => {
       expect(issues[0]).toMatchObject({
         path: 'Req',
         severity: 'warning',
-        message: expect.stringContaining('maxRedirects')
+        message: 'Invalid maxRedirects, ignored (must be a whole number of 0 or more)'
       });
     }
   );
-
-  it('should drop a null maxRedirects without raising an issue', async () => {
-    const { settings, issues } = await importPostmanRequestWithMaxRedirects(null);
-
-    expect(settings).not.toHaveProperty('maxRedirects');
-    expect(issues).toHaveLength(0);
-  });
 
   it('should import every sibling and report one issue per offending request', async () => {
     const { collection, issues } = await postmanToBruno(
