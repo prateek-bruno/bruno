@@ -88,4 +88,44 @@ describe('Item Schema Validation', () => {
       )
     ]);
   });
+
+  describe('settings.maxRedirects', () => {
+    const itemWithMaxRedirects = (maxRedirects) => ({
+      uid: uuid(),
+      name: 'Get Users',
+      type: 'http-request',
+      request: {
+        url: 'https://restcountries.com/v2/alpha/in',
+        method: 'GET',
+        headers: [],
+        params: [],
+        body: { mode: 'none' }
+      },
+      settings: { maxRedirects }
+    });
+
+    it.each([0, 50, 51, 1000])('item schema must accept a maxRedirects of %i', async (maxRedirects) => {
+      const validated = await itemSchema.validate(itemWithMaxRedirects(maxRedirects));
+      expect(validated.settings.maxRedirects).toBe(maxRedirects);
+    });
+
+    it('item schema must accept a null maxRedirects', async () => {
+      const validated = await itemSchema.validate(itemWithMaxRedirects(null));
+      expect(validated.settings.maxRedirects).toBeNull();
+    });
+
+    it('item schema must throw an error if maxRedirects is negative', async () => {
+      await expect(itemSchema.validate(itemWithMaxRedirects(-1))).rejects.toMatchObject({
+        path: 'settings.maxRedirects',
+        type: 'min'
+      });
+    });
+
+    it.each(['100', 'abc'])('item schema must throw an error if maxRedirects is the string %p', async (maxRedirects) => {
+      await expect(itemSchema.validate(itemWithMaxRedirects(maxRedirects))).rejects.toMatchObject({
+        path: 'settings.maxRedirects',
+        type: 'typeError'
+      });
+    });
+  });
 });
