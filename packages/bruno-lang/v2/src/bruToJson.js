@@ -561,11 +561,12 @@ const sem = grammar.createSemantics().addAttribute('ast', {
       parsedSettings.forwardAuthorizationHeader = toBool(settings.forwardAuthorizationHeader);
     }
 
-    // Parse maxRedirects as number
-    if (settings.maxRedirects !== undefined) {
-      const maxRedirects = parseInt(settings.maxRedirects, 10);
-      if (!isNaN(maxRedirects)) {
-        parsedSettings.maxRedirects = maxRedirects;
+    // Parse maxRedirects as number. Number rather than parseInt, which stopped at the exponent and
+    // read a value Bruno wrote as 1e+21 back as 1.
+    if (settings.maxRedirects) {
+      const maxRedirects = Number(settings.maxRedirects);
+      if (Number.isFinite(maxRedirects) && maxRedirects >= 0) {
+        parsedSettings.maxRedirects = Math.trunc(maxRedirects);
       }
     }
 
