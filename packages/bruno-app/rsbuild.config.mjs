@@ -7,6 +7,7 @@ import { pluginStyledComponents } from '@rsbuild/plugin-styled-components';
 import { pluginSass } from '@rsbuild/plugin-sass';
 import { pluginNodePolyfill } from '@rsbuild/plugin-node-polyfill';
 import { pluginRemoteImages } from './plugins/remote-images/index.mjs';
+import { pluginScriptApi } from './plugins/script-api/index.mjs';
 
 const require = createRequire(import.meta.url);
 const swaggerUiDir = path.dirname(require.resolve('swagger-ui-react'));
@@ -32,7 +33,8 @@ export default defineConfig({
     pluginRemoteImages({
       domains: remoteImageDomains,
       include: [/\.md$/]
-    })
+    }),
+    pluginScriptApi()
   ],
   source: {
     define: {

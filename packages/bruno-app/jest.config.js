@@ -1,6 +1,7 @@
 module.exports = {
   rootDir: '.',
   transform: {
+    'plugins/script-api/manifest\\.js$': '<rootDir>/plugins/script-api/jest-transform.cjs',
     '^.+\\.[jt]sx?$': 'babel-jest'
   },
   transformIgnorePatterns: [
@@ -18,6 +19,7 @@ module.exports = {
     '^providers/(.*)$': '<rootDir>/src/providers/$1',
     '^utils/(.*)$': '<rootDir>/src/utils/$1',
     '^test-utils/(.*)$': '<rootDir>/src/test-utils/$1',
+    '^script-api-manifest$': '<rootDir>/plugins/script-api/manifest.js',
     '^src/(.*)$': '<rootDir>/src/$1'
   },
   clearMocks: true,

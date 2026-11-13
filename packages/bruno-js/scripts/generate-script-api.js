@@ -8,17 +8,20 @@ const ts = require('typescript');
  * generate-script-api.js
  *
  * Usage:
- *   node scripts/generate-script-api.js [--check]
+ *   node scripts/generate-script-api.js [--check | --print-manifest]
  *   require('./generate-script-api').generateScriptApi()   (the outputs in memory)
  *
  * Description:
  *   Writes packages/bruno-js/types/script-api.d.ts, the input of the API
  *   reference site. The per-member manifest is only built in memory, for the
- *   parity test (tests/script-api-parity.spec.js).
+ *   parity test (tests/script-api-parity.spec.js) and for bruno-app's editor
+ *   hints, which read it through --print-manifest.
  *
  * Options:
- *   --check   Fail instead of writing when the committed script-api.d.ts is
- *             out of date
+ *   --check            Fail instead of writing when the committed
+ *                      script-api.d.ts is out of date
+ *   --print-manifest   Print { manifest, sources } as JSON instead of writing,
+ *                      where sources are the files the walk read
  */
 
 const JS_PKG = path.resolve(__dirname, '..');
@@ -792,13 +795,23 @@ const assertDeclarationsCompile = (declarations) => {
   }
 };
 
-const generateScriptApi = () => createGenerator(loadProgram()).generate();
+const generateScriptApi = () => {
+  const program = loadProgram();
+  const sources = program.getSourceFiles()
+    .map((file) => path.normalize(file.fileName))
+    .filter((file) => file.startsWith(JS_PKG) && !file.includes(`${path.sep}node_modules${path.sep}`));
+  return { ...createGenerator(program).generate(), sources };
+};
 
 const main = () => {
   const check = process.argv.includes('--check');
-  const { declarations, skipped } = generateScriptApi();
+  const { declarations, manifest, sources, skipped } = generateScriptApi();
   if (skipped.length) {
     console.warn(`Left out ${skipped.length} member(s) with no JSDoc summary (document them, or mark them @internal):\n${skipped.map((where) => `  ${where}`).join('\n')}`);
+  }
+  if (process.argv.includes('--print-manifest')) {
+    process.stdout.write(JSON.stringify({ manifest, sources }));
+    return;
   }
   assertDeclarationsCompile(declarations);
 
