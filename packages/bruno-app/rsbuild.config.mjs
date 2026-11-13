@@ -1,6 +1,4 @@
-import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { defineConfig } from '@rsbuild/core';
 import { pluginReact } from '@rsbuild/plugin-react';
@@ -9,20 +7,11 @@ import { pluginStyledComponents } from '@rsbuild/plugin-styled-components';
 import { pluginSass } from '@rsbuild/plugin-sass';
 import { pluginNodePolyfill } from '@rsbuild/plugin-node-polyfill';
 import { pluginRemoteImages } from './plugins/remote-images/index.mjs';
+import { pluginScriptApi } from './plugins/script-api/index.mjs';
 
 const require = createRequire(import.meta.url);
 const swaggerUiDir = path.dirname(require.resolve('swagger-ui-react'));
 const swaggerImmutable = require.resolve('immutable', { paths: [swaggerUiDir] });
-
-const codemirrorUtilsDir = fileURLToPath(new URL('./src/utils/codemirror/', import.meta.url));
-const generatedScriptApiManifest = path.join(codemirrorUtilsDir, 'generated', 'script-api-manifest.json');
-const hasGeneratedScriptApiManifest = fs.existsSync(generatedScriptApiManifest);
-if (!hasGeneratedScriptApiManifest && process.env.NODE_ENV === 'production') {
-  throw new Error(`Missing ${generatedScriptApiManifest}. Run \`npm run generate:script-api --workspace=packages/bruno-js -- --manifest-only\` before a production build.`);
-}
-const scriptApiManifest = hasGeneratedScriptApiManifest
-  ? generatedScriptApiManifest
-  : path.join(codemirrorUtilsDir, 'script-api-manifest.empty.json');
 
 const remoteImageDomains = (process.env.BRUNO_REMOTE_IMAGE_DOMAINS || 'd3icksk7srk4uh.cloudfront.net')
   .split(',')
@@ -44,7 +33,8 @@ export default defineConfig({
     pluginRemoteImages({
       domains: remoteImageDomains,
       include: [/\.md$/]
-    })
+    }),
+    pluginScriptApi()
   ],
   source: {
     define: {
@@ -62,8 +52,7 @@ export default defineConfig({
     // immutable@5 to the repo root, which dropped that default; redux-immutable
     // is also hoisted there, so without this alias it loads v5 and crashes.
     alias: {
-      immutable$: swaggerImmutable,
-      'script-api-manifest$': scriptApiManifest
+      immutable$: swaggerImmutable
     }
   },
   html: {

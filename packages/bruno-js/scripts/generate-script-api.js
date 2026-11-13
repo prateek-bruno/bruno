@@ -8,25 +8,20 @@ const ts = require('typescript');
  * generate-script-api.js
  *
  * Usage:
- *   node scripts/generate-script-api.js [--check | --manifest-only]
+ *   node scripts/generate-script-api.js [--check | --print-manifest]
  *   require('./generate-script-api').generateScriptApi()   (the outputs in memory)
  *
  * Description:
- *   Walks the script API outward from the globals declared in
- *   packages/bruno-js/types/globals.d.ts, reading types and docs from the
- *   JSDoc on the bruno-js classes, and writes:
- *   - packages/bruno-js/types/script-api.d.ts: one flattened interface per
- *     public type, the input of the API reference site
- *   - packages/bruno-app/src/utils/codemirror/generated/script-api-manifest.json:
- *     one entry per member path, for editor autocomplete and hover. It is not
- *     committed: CI and `npm run setup` generate it before bruno-app is built.
- *   Both come from the same walk, so they cannot disagree. The parity test
- *   (tests/script-api-parity.spec.js) reads the manifest in memory.
+ *   Writes packages/bruno-js/types/script-api.d.ts, the input of the API
+ *   reference site. The per-member manifest is only built in memory, for the
+ *   parity test (tests/script-api-parity.spec.js) and for bruno-app's editor
+ *   hints, which read it through --print-manifest.
  *
  * Options:
- *   --check           Fail instead of writing when the committed script-api.d.ts
- *                     is out of date
- *   --manifest-only   Write only the manifest
+ *   --check            Fail instead of writing when the committed
+ *                      script-api.d.ts is out of date
+ *   --print-manifest   Print { manifest, sources } as JSON instead of writing,
+ *                      where sources are the files the walk read
  */
 
 const JS_PKG = path.resolve(__dirname, '..');
@@ -34,7 +29,6 @@ const ROOT = path.resolve(JS_PKG, '..', '..');
 const TSCONFIG = path.join(JS_PKG, 'tsconfig.script-api.json');
 const GLOBALS = path.join(JS_PKG, 'types', 'globals.d.ts');
 const DTS_OUT = path.join(JS_PKG, 'types', 'script-api.d.ts');
-const MANIFEST_OUT = path.join(ROOT, 'packages', 'bruno-app', 'src', 'utils', 'codemirror', 'generated', 'script-api-manifest.json');
 
 // The compiler reports file names with forward slashes on every platform.
 const toPosix = (p) => p.split(path.sep).join('/');
@@ -701,7 +695,7 @@ const createGenerator = (program) => {
     return out.join('\n').replace(/\n+$/, '\n');
   };
 
-  // ── Rendering: the editor manifest ───────────────────────────────────
+  // ── Rendering: the member manifest (in memory, for the parity test) ──
 
   const intersect = (inherited, own) => (own ? inherited.filter((value) => own.includes(value)) : inherited);
 
@@ -801,30 +795,24 @@ const assertDeclarationsCompile = (declarations) => {
   }
 };
 
-const generateScriptApi = () => createGenerator(loadProgram()).generate();
-
-const writeOutputs = (outputs) => {
-  for (const [file, content] of outputs) {
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, content);
-    console.log(`Wrote ${path.relative(ROOT, file)}`);
-  }
+const generateScriptApi = () => {
+  const program = loadProgram();
+  const sources = program.getSourceFiles()
+    .map((file) => path.normalize(file.fileName))
+    .filter((file) => file.startsWith(JS_PKG) && !file.includes(`${path.sep}node_modules${path.sep}`));
+  return { ...createGenerator(program).generate(), sources };
 };
 
 const main = () => {
   const check = process.argv.includes('--check');
-  const manifestOnly = process.argv.includes('--manifest-only');
-  const { declarations, manifest, skipped } = generateScriptApi();
+  const { declarations, manifest, sources, skipped } = generateScriptApi();
   if (skipped.length) {
     console.warn(`Left out ${skipped.length} member(s) with no JSDoc summary (document them, or mark them @internal):\n${skipped.map((where) => `  ${where}`).join('\n')}`);
   }
-
-  const manifestOutput = [MANIFEST_OUT, JSON.stringify(manifest, null, 2) + '\n'];
-  if (manifestOnly) {
-    writeOutputs([manifestOutput]);
+  if (process.argv.includes('--print-manifest')) {
+    process.stdout.write(JSON.stringify({ manifest, sources }));
     return;
   }
-
   assertDeclarationsCompile(declarations);
 
   if (check) {
@@ -837,7 +825,12 @@ const main = () => {
     return;
   }
 
-  writeOutputs([[DTS_OUT, declarations], manifestOutput]);
+  const outputs = [[DTS_OUT, declarations]];
+  for (const [file, content] of outputs) {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, content);
+    console.log(`Wrote ${path.relative(ROOT, file)}`);
+  }
 };
 
 if (require.main === module) {
